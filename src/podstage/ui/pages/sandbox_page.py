@@ -200,6 +200,29 @@ class ProfileDialog(QDialog):
         self._library_rw.setChecked(existing.library_rw if existing else False)
         form.addRow(tr("Host library"), self._library_rw)
 
+        # Which Steam this sandbox runs. A creation-time decision: switching
+        # later would orphan an isolated sandbox's install, login and Proton
+        # prefixes, and a shared one has no install of its own to fall back on.
+        self._steam_mode = ComboBox()
+        self._steam_mode.addItem(tr("Isolated - its own Steam and login"),
+                                 "isolated")
+        self._steam_mode.addItem(tr("Shared - the Steam of this PC"), "shared")
+        current = self._steam_mode.findData(existing.steam_mode if existing else "isolated")
+        self._steam_mode.setCurrentIndex(max(current, 0))
+        if existing is not None:
+            self._steam_mode.setEnabled(False)
+            self._steam_mode.setToolTip(tr(
+                "Chosen when the sandbox is created and not editable: an "
+                "isolated sandbox owns its Steam install, login and Proton "
+                "prefixes. Create a new sandbox to change it."))
+        else:
+            self._steam_mode.setToolTip(tr(
+                "Shared runs the Steam of this PC, so non-Steam shortcuts, "
+                "saves and settings are the same as on the desktop. Isolated "
+                "gives the sandbox its own Steam and login, for a different "
+                "account."))
+        form.addRow(tr("Steam install"), self._steam_mode)
+
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
@@ -403,6 +426,10 @@ class ProfileDialog(QDialog):
             preview_interval_s=base.preview_interval_s,
             extra_mounts=mounts,
             library_rw=self._library_rw.isChecked(),
+            # Creation-only, so it is carried through the explicit rebuild:
+            # reconstructing with the default would silently reset an existing
+            # sandbox's mode on every unrelated edit.
+            steam_mode=self._steam_mode.currentData() or "isolated",
             moonshine_fec_percent=base.moonshine_fec_percent,
             moonshine_keyboard_layout=self._kb_layout.text().strip(),
             moonshine_keyboard_variant=self._kb_variant.text().strip(),

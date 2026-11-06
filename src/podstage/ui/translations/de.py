@@ -437,6 +437,24 @@ TEXTS: dict[str, str] = {
         "Bindet die geteilten Steam-Libraries read/write ein. Updates aus "
         "der Sandbox bleiben auf dem Host erhalten.",
     "Host library": "Host-Library",
+    "Steam install": "Steam-Installation",
+    "Isolated - its own Steam and login":
+        "Isoliert - eigenes Steam und eigener Login",
+    "Shared - the Steam of this PC":
+        "Geteilt - das Steam dieses PCs",
+    "Chosen when the sandbox is created and not editable: an isolated "
+    "sandbox owns its Steam install, login and Proton prefixes. Create a new "
+    "sandbox to change it.":
+        "Wird beim Erstellen der Sandbox gewählt und ist danach nicht änderbar: "
+        "eine isolierte Sandbox besitzt ihre Steam-Installation, ihren Login "
+        "und ihre Proton-Prefixe. Lege für einen Wechsel eine neue Sandbox an.",
+    "Shared runs the Steam of this PC, so non-Steam shortcuts, saves and "
+    "settings are the same as on the desktop. Isolated gives the sandbox its "
+    "own Steam and login, for a different account.":
+        "Geteilt nutzt das Steam dieses PCs, sodass Nicht-Steam-Verknüpfungen, "
+        "Spielstände und Einstellungen dieselben sind wie auf dem Desktop. "
+        "Isoliert gibt der Sandbox ein eigenes Steam und einen eigenen Login, "
+        "für ein anderes Konto.",
     "Briefly disconnects and reconnects the streamed pads.":
         "Trennt die gestreamten Pads kurz und verbindet sie neu.",
     "Gamepads disconnected and reconnected.":
