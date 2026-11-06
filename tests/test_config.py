@@ -341,6 +341,22 @@ def test_library_rw_default_and_roundtrip(tmp_path: Path):
     assert AppConfig.load(path).get("rw").library_rw is True
 
 
+def test_steam_mode_defaults_to_isolated(tmp_path: Path):
+    # Default isolated, also for configs written before the field existed.
+    assert SessionConfig(name="s").steam_mode == "isolated"
+    path = tmp_path / "config.toml"
+    AppConfig(sessions=[SessionConfig(name="sh", steam_mode="shared")]).save(path)
+    assert AppConfig.load(path).get("sh").steam_mode == "shared"
+
+
+def test_steam_mode_unknown_falls_back_to_isolated():
+    # A hand-edited config, or one written by a newer podstage, must not put
+    # the sandbox in a mode podstage cannot honour. Isolated is the safe half:
+    # the sandbox owns its install and login, so nothing of the host's is at
+    # risk.
+    assert SessionConfig(name="s", steam_mode="shared-ish").steam_mode == "isolated"
+
+
 def test_stream_name_round_trips(tmp_path):
     cfg = config.AppConfig(
         sessions=[config.SessionConfig(name="a", stream_name="Living room")])
