@@ -83,21 +83,23 @@ from `fix/sandbox-login-ufw-gamepad` belong to that feature, not to this one, so
 this feature's slice counter starts at commit 1 below (not at `origin/main`).
 
 - T1 — Add `steam_mode: str = "isolated"` to `SessionConfig` with generic
-  serialization round-trip; rejected values fail loudly. `S4,S5`. inline. commit 1.
+  serialization round-trip; rejected values fall back to isolated. `S4,S5`.
+  inline. commit 321c894.
 - T2 — Thread the field `session.py:_options` → `RuntimeOptions` → `podman_run_args`.
-  `S1`. inline. commit 1.
+  `S1`. inline. commit 321c894.
 - T3 — Shared mount branch in `container_flags`: host Steam root rw at its real
   absolute path, non-default libraries rw with no overlay, host root excluded from
-  `library_paths` to avoid a nested double mount. `S1,S8`. inline. commit 2.
+  `library_paths` to avoid a nested double mount. `S1,S8`. inline. commit 321c894.
 - T4 — Skip provisioning and overlays in shared mode; do not call
   `provisioner.ensure_all`, `ensure_overlay_dirs`, or `drop_foreign_steam_links`.
-  `S8`. inline. commit 2.
+  `S8`. inline. commit 321c894 (provisioning); `drop_foreign_steam_links` is
+  avoided by refusing `setup()` in shared mode.
 - T5 — Create `<home>/.steam/steam` → host root before start; never mount the host
   `~/.steam`, so `bin_steam.sh` cannot forward the command line to a running desktop
-  Steam via `steam.pipe`. `S1,S2,S7`. inline. commit 2.
+  Steam via `steam.pipe`. `S1,S2,S7`. inline. commit 321c894.
 - T6 — Pre-start guard: resolve the link, require an executable `steam.sh`, abort
-  with a clear message otherwise; `doctor` reports shared-mode readiness. `S7`.
-  inline. commit 2.
+  with a clear message otherwise. `S7`. inline. commit 321c894.
+  Pending: the `doctor` readiness check, deferred with the UI work.
 - T7 — Single-instance invariant enforced for both modes with shared-mode
   detection that does not rely on the HOME path (both resolve to the same HOME);
   refuse a second shared sandbox. `S2`. inline. commit 3.
