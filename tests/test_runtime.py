@@ -836,6 +836,71 @@ def test_library_rw_flows_from_options(monkeypatch):
     assert f"{LIBS[0]}:{LIBS[0]}:O,upperdir=" in default
 
 
+# -- steam_mode: shared (runs the desktop install) ---------------------------
+
+SHARED_ROOT = Path("/tmp/host-steam")
+
+
+def test_isolated_mode_mounts_no_host_root(monkeypatch):
+    monkeypatch.setattr(runtime, "gpu_vendor", lambda: "nvidia")
+    joined = " ".join(runtime.podman_run_args(_opts(), library_paths=LIBS))
+    assert str(SHARED_ROOT) not in joined
+    assert f"{LIBS[0]}:{LIBS[0]}:O,upperdir=" in joined
+
+
+def test_shared_mode_mounts_the_host_root_plain(monkeypatch):
+    """Shared mode runs the desktop install, so the root is mounted plain rw
+    at its real absolute path (every shortcut and library path inside Steam's
+    own VDFs is host-absolute) and no overlay is layered over the libraries:
+    an overlay over the install you are sharing is a fiction."""
+    monkeypatch.setattr(runtime, "gpu_vendor", lambda: "nvidia")
+    monkeypatch.setattr(runtime, "shared_steam_root", lambda: SHARED_ROOT)
+    joined = " ".join(runtime.podman_run_args(_opts(steam_mode="shared"),
+                                             library_paths=LIBS))
+    assert f"-v {SHARED_ROOT}:{SHARED_ROOT}" in joined
+    assert f"-v {LIBS[0]}:{LIBS[0]} " in joined + " "
+    assert ":O,upperdir=" not in joined
+
+
+def test_shared_mode_skips_paths_inside_the_root(monkeypatch):
+    """The default library lives inside the host root, which is already
+    mounted; mounting it again would nest a bind inside the HOME mount."""
+    inner = SHARED_ROOT / "steamapps"
+    other = Path("/mnt/other/steamapps")
+    monkeypatch.setattr(runtime, "gpu_vendor", lambda: "nvidia")
+    monkeypatch.setattr(runtime, "shared_steam_root", lambda: SHARED_ROOT)
+    monkeypatch.setattr(runtime, "shared_library_paths", lambda *a, **k: [inner, other])
+    joined = " ".join(runtime.podman_run_args(_opts(steam_mode="shared")))
+    assert f"-v {inner}:{inner}" not in joined
+    assert f"-v {other}:{other}" in joined
+
+
+def test_shared_link_points_at_the_host_root(tmp_path: Path):
+    root = tmp_path / "Steam"
+    root.mkdir()
+    launcher = root / "steam.sh"
+    launcher.write_text("#!/bin/sh\n")
+    launcher.chmod(0o755)
+
+    link = runtime.ensure_shared_steam_link(tmp_path / "home", root)
+
+    assert link == tmp_path / "home" / ".steam" / "steam"
+    assert link.is_symlink()
+    assert link.resolve() == root.resolve()
+
+
+def test_shared_link_guard_refuses_without_a_launcher(tmp_path: Path):
+    """bin_steam.sh's check_bootstrap only asks for an executable steam.sh;
+    when it is missing it extracts its bootstrap tarball into
+    ~/.local/share/Steam, which in shared mode IS the host install. The guard
+    has to refuse before Steam can help."""
+    root = tmp_path / "Steam"
+    root.mkdir()
+
+    with pytest.raises(RuntimeError, match="executable"):
+        runtime.ensure_shared_steam_link(tmp_path / "home", root)
+
+
 def test_provisioning_reports_purged_orphan_downloads(tmp_path, monkeypatch, capsys):
     """A silent sweep of tens of GB would look like the sandbox shrinking on
     its own; the start log has to name it."""

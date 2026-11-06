@@ -181,6 +181,11 @@ def validate_client_name(name: str) -> str:
     return name
 
 
+# Which Steam a sandbox runs. "isolated" owns its install and login;
+# "shared" runs the host's real installation. See SessionConfig.steam_mode.
+STEAM_MODES = ("isolated", "shared")
+
+
 @dataclass
 class SessionConfig:
     """One sandboxed Steam instance and how it streams (Big Picture).
@@ -249,6 +254,16 @@ class SessionConfig:
     # The sandbox keeps its own manifest copy, so the host Steam sees the new
     # build only after its own (quick, files already current) update pass.
     library_rw: bool = False
+    # Which Steam this sandbox runs. "isolated" (default) gives it its own
+    # install, login and Proton prefixes, so each profile can hold a different
+    # account. "shared" runs the host's real installation instead: non-Steam
+    # shortcuts, grid art, localconfig and compatdata are then the same files
+    # as on the desktop, which is what a single account wants.
+    #
+    # A creation-time decision, never edited afterwards: an isolated sandbox
+    # owns state a switch would orphan, and a shared one has no install of its
+    # own to fall back on.
+    steam_mode: str = "isolated"
     # Name moonlight lists and the backend announces (sunshine_name, i.e.
     # PS_SUNSHINE_NAME / PS_MOONSHINE_NAME). Empty derives
     # `{profile}-{backend}` via runtime.advertised_name, which keeps the
@@ -266,6 +281,14 @@ class SessionConfig:
         # CLI and GUI validate their own input up front via backends.get().
         if self.backend not in backends.BACKENDS:
             self.backend = backends.DEFAULT
+        # An unknown mode is not a guess worth making: isolated keeps the
+        # sandbox's own install and login, so nothing of the host's is at risk.
+        if self.steam_mode not in STEAM_MODES:
+            self.steam_mode = "isolated"
+
+    def is_shared(self) -> bool:
+        """True when this sandbox streams the host's own Steam install."""
+        return self.steam_mode == "shared"
 
     def is_ask(self) -> bool:
         """True for an "ask" profile (resolution chosen at start, not fixed)."""

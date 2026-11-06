@@ -186,6 +186,10 @@ class RuntimeOptions:
     # Shared libraries plain read/write instead of overlay
     # (config.SessionConfig.library_rw).
     library_rw: bool = False
+    # "isolated" (default) or "shared"; see config.SessionConfig.steam_mode.
+    # Shared resolves the host install at start time: the root is mounted at
+    # its real absolute path and nothing is provisioned.
+    steam_mode: str = "isolated"
     # Name moonlight lists and the backend announces; empty derives
     # ``{client}-{backend}`` (see advertised_name).
     stream_name: str = ""
@@ -352,6 +356,71 @@ def shared_library_paths(home_dir: Path, provision: bool = True,
     return paths
 
 
+def outside_steam_root(paths: list[Path], root: Path | None) -> list[Path]:
+    """Drop paths already covered by a shared-mode host root mount.
+
+    The host root carries its own library (and ``compatibilitytools.d``);
+    mounting those again would nest a bind inside the container HOME mount,
+    which is where the root's "Steam" directory is reached from.
+    """
+    if root is None:
+        return paths
+    resolved = root.resolve()
+    return [p for p in paths
+            if p.resolve() != resolved and resolved not in p.resolve().parents]
+
+
+def shared_steam_root() -> Path:
+    """The host Steam install a shared-mode sandbox runs.
+
+    Raises when there is none: shared mode has nothing to share without a
+    desktop install, and guessing a path is how a sandbox ends up bootstrapping
+    a fresh client on top of the real one.
+    """
+    root = steam.find_steam_root()
+    if root is None:
+        raise RuntimeError(
+            "shared Steam mode needs a Steam install on the host and none was "
+            "found (looked for ~/.steam/steam, ~/.local/share/Steam and "
+            "~/.steam/root). Install Steam, or create the sandbox in isolated "
+            "mode.")
+    return root
+
+
+def ensure_shared_steam_link(home_dir: Path, root: Path) -> Path:
+    """Point ``<home>/.steam/steam`` at the host install and verify it works.
+
+    ``bin_steam.sh`` resolves ``~/.steam/steam`` before it ever considers
+    ``$XDG_DATA_HOME/Steam``, and its ``check_bootstrap`` only asks for an
+    executable ``steam.sh`` — it compares no versions, so the image's package
+    can neither update nor downgrade the host install. But when that check
+    fails it extracts its own bootstrap tarball into ``~/.local/share/Steam``,
+    which in shared mode IS the mounted host install. An unresolvable link is
+    therefore a data-loss path, not a nuisance: refuse here instead of letting
+    Steam help.
+
+    The host's ``~/.steam`` is deliberately not mounted: it holds
+    ``steam.pipe``, through which the launcher forwards a command line to an
+    already-running client.
+    """
+    link = home_dir / ".steam" / "steam"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if link.exists() and not link.is_symlink():
+        raise RuntimeError(
+            f"{link} is a real directory, not a link. A shared sandbox keeps "
+            "its Steam in the host install; recreate the sandbox in shared mode.")
+    link.unlink(missing_ok=True)
+    link.symlink_to(root)
+    launcher = root / "steam.sh"
+    if not os.access(launcher, os.X_OK):
+        raise RuntimeError(
+            f"shared Steam mode needs an executable {launcher} and there is "
+            "none. Without it Steam would extract its own bootstrap over that "
+            "install, so podstage refuses to start. Install or repair the "
+            "desktop Steam, or create the sandbox in isolated mode.")
+    return link
+
+
 def lan_ips() -> list[str]:
     """Global-scope IPv4 addresses of the host (for CSRF origins)."""
     rc, out = _run(["ip", "-4", "-o", "addr", "show", "scope", "global"])
@@ -473,6 +542,9 @@ def podman_run_args(opts: RuntimeOptions, library_paths: list[Path] | None = Non
     if library_paths is None:
         library_paths = shared_library_paths(opts.home_dir, provision=False, app_ids=opts.app_ids)
 
+    steam_root = shared_steam_root() if opts.steam_mode == "shared" else None
+    library_paths = outside_steam_root(library_paths, steam_root)
+
     vendor = gpu_vendor()
     env = container_env(opts, library_paths, vendor=vendor)
     args = ["run", "--rm", "--name", CONTAINER_NAME]
@@ -488,6 +560,7 @@ def podman_run_args(opts: RuntimeOptions, library_paths: list[Path] | None = Non
                             seccomp_profile=(SECCOMP_PROFILE if opts.spec.needs_kcmp
                                              else None),
                             library_rw=opts.library_rw,
+                            steam_root=steam_root,
                             input_mirror=env.get("PS_GAMEPAD_RECONNECT") == "enabled")
     args += ["-v", f"{opts.home_dir}:/home/player"]
     for key, val in env.items():
@@ -585,7 +658,8 @@ def container_flags(library_paths: list[Path], home_dir: Path,
                     full_dev: bool = False,
                     seccomp_profile: Path | None = None,
                     library_rw: bool = False,
-                    input_mirror: bool = False) -> list[str]:
+                    input_mirror: bool = False,
+                    steam_root: Path | None = None) -> list[str]:
     """Devices, isolation and mounts of the rootless runtime container.
     Excludes: container name/detach, the client HOME volume, env, image.
 
@@ -595,7 +669,8 @@ def container_flags(library_paths: list[Path], home_dir: Path,
     plain read/write, so sandbox-side game updates persist to the host.
     ``input_mirror`` (gamepad_reconnect) mounts the real /dev/input at
     /dev/input-real plus a tmpfs at /dev/input, which the entrypoint's mirror
-    daemon fills with symlinks."""
+    daemon fills with symlinks. ``steam_root`` selects shared mode: that host
+    install is mounted at its own path and every library mounts plain."""
     vendor = vendor or gpu_vendor()
     if vendor in MESA_VENDORS:
         # AMD/Intel: plain DRI nodes; Mesa Vulkan (RADV/ANV) + VAAPI userspace
@@ -665,11 +740,19 @@ def container_flags(library_paths: list[Path], home_dir: Path,
     ]
     if vendor not in MESA_VENDORS:
         args += nvidia_lib32_mounts()
+    # Shared mode runs the desktop install itself, so its root is mounted
+    # plain rw at its real absolute path: every library and shortcut path
+    # inside Steam's own VDFs is host-absolute, and the container's Steam has
+    # to find them exactly where the desktop wrote them.
+    if steam_root is not None:
+        args += ["-v", f"{steam_root}:{steam_root}"]
     # :ro breaks pending updates ("Disk write failure"). The default overlay
     # gives Steam a writable view while the host library stays untouched;
-    # library_rw mounts plain rw so updates persist to the host instead.
+    # library_rw mounts plain rw so updates persist to the host instead — and
+    # shared mode always mounts plain, because an overlay over the install you
+    # are sharing is a fiction.
     for p in library_paths:
-        if library_rw:
+        if library_rw or steam_root is not None:
             args += ["-v", f"{p}:{p}"]
         else:
             upper, work = config.overlay_dirs(home_dir, p)
@@ -1129,10 +1212,22 @@ def start(opts: RuntimeOptions) -> RuntimeStatus:
             "podman's default, and that default could not be read (`podman "
             "info`, host.security.seccompProfilePath)")
 
+    # A shared sandbox streams the desktop install: nothing belongs to the
+    # sandbox, so nothing is provisioned. Provisioning here is not merely
+    # useless, it destroys host state — purge_orphan_downloads removes staging
+    # dirs under the shared library and mirror_compat_mappings rewrites the
+    # host's config.vdf. The link the launcher resolves is created and
+    # verified instead, before any mount exists.
+    steam_root = None
+    if opts.steam_mode == "shared":
+        steam_root = shared_steam_root()
+        opts.provision = False
+        ensure_shared_steam_link(opts.home_dir, steam_root)
     # Provision here (the one place with the side effect), then hand the
     # discovered libraries to the pure args builder.
     library_paths = shared_library_paths(opts.home_dir, provision=opts.provision,
                                          app_ids=opts.app_ids)
+    library_paths = outside_steam_root(library_paths, steam_root)
     # Extra mounts fail fast on a bad or vanished source: a missing bind
     # source would make podman create it, and a typo would surface only as a
     # broken non-Steam shortcut inside Big Picture.
@@ -1142,7 +1237,8 @@ def start(opts: RuntimeOptions) -> RuntimeStatus:
         raise RuntimeError("extra mount source missing: "
                            + ", ".join(str(p) for p in missing))
     ensure_overlay_dirs(opts.home_dir,
-                        ([] if opts.library_rw else library_paths) + overlay_extra)
+                        ([] if opts.library_rw or steam_root else library_paths)
+                        + overlay_extra)
     # Bind source must exist, or podman creates it root-owned in the tmpfs.
     config.RUNTIME_SHARE_DIR.mkdir(parents=True, exist_ok=True)
     argv = ["podman"] + podman_run_args(opts, library_paths=library_paths)

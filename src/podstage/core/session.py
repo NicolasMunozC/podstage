@@ -55,6 +55,15 @@ class Session:
     def is_bootstrapped(self) -> bool:
         return provisioner.stream_steamapps(self.home).exists()
 
+    @property
+    def shared(self) -> bool:
+        """True when this sandbox streams the desktop Steam install.
+
+        Nothing about the install belongs to the sandbox then: no library to
+        provision, no login to check, no overlays to keep.
+        """
+        return self.cfg.steam_mode == "shared"
+
     def _host_steam_running(self) -> bool:
         """True if a Steam is running under a HOME other than this session's.
 
@@ -197,6 +206,10 @@ class Session:
             env=env,
             extra_mounts=list(self.cfg.extra_mounts),
             library_rw=self.cfg.library_rw,
+            steam_mode=self.cfg.steam_mode,
+            # A shared sandbox owns nothing to provision (see runtime.start,
+            # which also refuses it for callers that build options directly).
+            provision=not self.shared,
             stream_name=self.cfg.stream_name,
         )
 
@@ -212,6 +225,11 @@ class Session:
         :func:`sandbox.steam_env`), not in the container: the container's
         ``desktop`` mode is a debug path and nothing here uses it.
         """
+        if self.shared:
+            raise RuntimeError(
+                f"Session '{self.cfg.name}' runs the desktop Steam (shared mode): "
+                "there is no separate install to launch or log into. Sign in "
+                "with your normal Steam; podstage streams that same install.")
         if runtime.is_running():
             raise RuntimeError(
                 "a streaming session is running; stop it before opening the "
@@ -283,16 +301,19 @@ class Session:
         ``resolution`` (WxH@R) is required for an "ask" profile and overrides
         a fixed one.
         """
-        if not self.is_bootstrapped():
-            raise RuntimeError(
-                f"Session '{self.cfg.name}' not set up — run 'podstage sandbox setup {self.cfg.name}' first"
-            )
-        if not sandbox.steam_logged_in(self.home):
-            raise RuntimeError(
-                f"Session '{self.cfg.name}' has no Steam login yet: run "
-                f"'podstage sandbox setup {self.cfg.name}' (or the GUI's Steam "
-                f"login) and log in first"
-            )
+        # A shared sandbox has no install or login of its own: it streams the
+        # desktop Steam, whose sign-in already answers both gates.
+        if not self.shared:
+            if not self.is_bootstrapped():
+                raise RuntimeError(
+                    f"Session '{self.cfg.name}' not set up — run 'podstage sandbox setup {self.cfg.name}' first"
+                )
+            if not sandbox.steam_logged_in(self.home):
+                raise RuntimeError(
+                    f"Session '{self.cfg.name}' has no Steam login yet: run "
+                    f"'podstage sandbox setup {self.cfg.name}' (or the GUI's Steam "
+                    f"login) and log in first"
+                )
         if self.sandbox_steam_running():
             raise RuntimeError(
                 "the sandbox Steam is still open on the desktop; close it "

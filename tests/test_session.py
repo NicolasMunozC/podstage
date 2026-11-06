@@ -42,6 +42,56 @@ def test_start_requires_steam_login(monkeypatch):
         s.start()
 
 
+def test_start_shared_skips_login_gates_and_provisioning(monkeypatch):
+    """A shared sandbox has no install or login of its own to check, and it
+    must never provision: purge_orphan_downloads would delete the host's
+    in-flight downloads and mirror_compat_mappings would rewrite the host's
+    config.vdf."""
+    import pytest
+
+    from podstage.core import provisioner, runtime, sandbox
+
+    s = Session(SessionConfig(name="deck", steam_mode="shared"))
+    monkeypatch.setattr(s, "is_bootstrapped", lambda: False)
+    monkeypatch.setattr(s, "sandbox_steam_running", lambda: False)
+    monkeypatch.setattr(s, "close_host_steam", lambda *a, **k: None)
+    monkeypatch.setattr(sandbox, "steam_logged_in", lambda home: False)
+    monkeypatch.setattr(sandbox, "prune_duplicate_client_certs", lambda home: [])
+    monkeypatch.setattr(provisioner, "ensure_all",
+                        lambda *a, **k: pytest.fail("shared mode must not provision"))
+    captured = {}
+    monkeypatch.setattr(runtime, "start",
+                        lambda opts: captured.setdefault("opts", opts))
+
+    s.start()
+
+    assert captured["opts"].steam_mode == "shared"
+    assert captured["opts"].provision is False
+
+
+def test_start_isolated_still_requires_a_login(monkeypatch):
+    import pytest
+
+    from podstage.core import sandbox
+
+    s = Session(SessionConfig(name="deck"))
+    monkeypatch.setattr(s, "is_bootstrapped", lambda: True)
+    monkeypatch.setattr(sandbox, "steam_logged_in", lambda home: False)
+    with pytest.raises(RuntimeError, match="no Steam login"):
+        s.start()
+
+
+def test_setup_refuses_in_shared_mode(monkeypatch):
+    """Shared mode streams the desktop Steam: there is no separate install to
+    launch, log into or repair, and the link repair would delete the very link
+    shared mode needs."""
+    import pytest
+
+    s = Session(SessionConfig(name="deck", steam_mode="shared"))
+    with pytest.raises(RuntimeError, match="shared mode"):
+        s.setup()
+
+
 def test_start_refuses_while_sandbox_steam_open(monkeypatch):
     import pytest
 
