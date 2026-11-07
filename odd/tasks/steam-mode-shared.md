@@ -76,6 +76,16 @@ delete the host's in-flight downloads and `mirror_compat_mappings` would rewrite
 the host's `config.vdf`. The provisioner is not "skipped for speed": running it in
 shared mode is a data-loss path.
 
+**S9 — The boundary is what Steam owns, not `$HOME`.** Shared mode shares
+everything Steam keeps: `userdata` (shortcuts, grid art, localconfig), the
+libraries (`libraryfolders.vdf`, `appmanifest_*.acf`), `compatibilitytools.d` and
+`compatdata` (Proton prefixes). It does **not** share `$HOME`: inside the
+container that is still the sandbox (`/home/player`). A game that saves inside
+its Proton prefix is covered, because that prefix is the shared one. A native
+build that writes to `~/.config`, `~/.local/share` or `~/Documents` without
+Proton keeps separate saves, and the honest fix there is an `extra_mounts` entry
+for that directory or forcing Proton for that game.
+
 ## Tasks
 
 Slice baseline: `b89433d`, already merged into `fork/main`. The 792 lines carried
@@ -125,6 +135,10 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
   `sandbox.steam_env` and calls `drop_foreign_steam_links`) and the Session page
   has its own login gate (`session_page.py:_on_start`). Neither went through
   `Session.setup()`, so both had to learn `steam_mode`. `S1,S5,S7`. inline.
+- T13 — Documents the S9 boundary: shared mode covers what Steam owns, not
+  `$HOME`. README/CHANGELOG says so next to the existing `extra_mounts` advice, so
+  "my save did not carry over" has an answer before it becomes a bug report.
+  `S9`. inline.
 
 ## Log
 
