@@ -414,6 +414,55 @@ def check_extra_mount_picker() -> bool:
     return True
 
 
+def check_profile_dialog_hides_mode_locked_rows() -> bool:
+    """A shared sandbox forces home, library and games, so it does not draw
+    those rows; an isolated one owns its install, so they are real choices.
+
+    A locked control only asks why it cannot be changed, which is why the rows
+    are hidden instead of disabled — and hiding is presentation only: the
+    profile must still carry the values the config normalizes for the mode.
+    """
+    from podstage.ui.pages import sandbox_page
+
+    cfg = config.AppConfig(sessions=[])
+    rows = ("_share_home", "_library_rw", "_games_box", "_mounts_box")
+    ok = True
+
+    for mode, hidden in (("shared", True), ("isolated", False)):
+        dlg = sandbox_page.ProfileDialog(
+            None, cfg, config.SessionConfig(name="deck", steam_mode=mode))
+        wrong = [r for r in rows if getattr(dlg, r).isHidden() != hidden]
+        if wrong:
+            drawn = "hidden" if hidden else "drawn"
+            print(f"gui smoke: FAILED ({mode} sandbox: rows not {drawn} as its "
+                  f"choices: {wrong})")
+            ok = False
+        if mode == "shared":
+            dlg._on_accept()
+            prof = dlg.result_profile
+            if prof is None or not (prof.share_home and prof.library_rw) \
+                    or prof.app_ids:
+                print("gui smoke: FAILED (a hidden row did not save the value "
+                      f"the shared mode forces: {prof})")
+                ok = False
+
+    # A new profile starts isolated but can switch modes while still open, so
+    # the rows have to follow without reopening the dialog.
+    fresh = sandbox_page.ProfileDialog(None, cfg)
+    if any(getattr(fresh, r).isHidden() for r in rows):
+        print("gui smoke: FAILED (a new profile starts with mode rows hidden)")
+        ok = False
+    fresh._steam_mode.setCurrentIndex(fresh._steam_mode.findData("shared"))
+    if not all(getattr(fresh, r).isHidden() for r in rows):
+        print("gui smoke: FAILED (switching to shared left the forced rows drawn)")
+        ok = False
+    fresh._steam_mode.setCurrentIndex(fresh._steam_mode.findData("isolated"))
+    if any(getattr(fresh, r).isHidden() for r in rows):
+        print("gui smoke: FAILED (switching back to isolated kept rows hidden)")
+        ok = False
+    return ok
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     if not check_sandbox_columns():
@@ -440,6 +489,7 @@ def main() -> int:
     ok = check_build_button_ignores_backend_choice(win) and ok
     ok = check_session_card_per_backend(win) and ok
     ok = check_extra_mount_picker() and ok
+    ok = check_profile_dialog_hides_mode_locked_rows() and ok
     ok = check_backend_switch(win) and ok
     ok = check_load_card_is_host_wide(win) and ok
     ok = check_pair_dialog_names_the_announced_host(win) and ok
