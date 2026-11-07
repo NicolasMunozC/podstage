@@ -167,19 +167,21 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
   "my save did not carry over" has an answer before it becomes a bug report.
   `S9`. inline.
 - T14 — `share_home: bool = False` on `SessionConfig`, normalized to False unless
-  `steam_mode == "shared"`; creation-time only. `S10`. inline.
+  `steam_mode == "shared"`; creation-time only. `S10`. inline. commit 05b51e6.
 - T15 — Runtime: mount the real home at its real path rw, set `HOME` in the
   container env, shadow `<sandbox>/.cache/podstage` over `<HOME>/.cache/podstage`,
   skip the separate Steam-root mount and the `.steam` link, and verify the real
-  launcher instead. `S7,S10`. inline.
-- T16 — Single-instance guard by ownership: decide "is Steam running" from
-  processes not owned by podman (cgroup), not from the HOME path, so it works in
-  both modes and still refuses a second session. `S2,S10`. inline.
-- T17 — GUI: a creation-only checkbox, enabled only when the Steam mode is
-  shared, disabled when editing, with i18n. `S10`. inline.
-- T18 — Tests: mount list and `HOME` env for the mode, the state shadow, the
-  launcher guard on a home without an executable, and the ownership-based
-  detection ignoring a podman-owned Steam. `S2,S7,S10`. inline.
+  launcher instead. `S7,S10`. inline. commit 05b51e6.
+- T16 — Single-instance guard: cgroup ownership added on top of the image-HOME and
+  sandbox-HOME path exclusions, so a second session is still refused in both modes
+  and the container's own Steam never counts as the desktop's. `S2,S10`. inline.
+  commit 05b51e6.
+- T17 — GUI: creation-only checkbox next to the Steam mode, enabled only for a
+  shared sandbox and disabled when editing, carried through the explicit rebuild,
+  with i18n. `S10`. inline. commit 05b51e6.
+- T18 — Tests: config default and normalization, round-trip, the home mount and
+  state shadow and `HOME`, the root mount being skipped, the launcher guard, and
+  the ownership-based detection. `S2,S7,S10`. inline. commit 05b51e6.
 - T19 — Docs: README/CHANGELOG for the three levels (isolated, shared, shared +
   full parity) and their blast radius. `S9,S10`. inline.
 
@@ -224,3 +226,9 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
   why moonlight listed no host. The sandbox's `.steam` was still the one left by the
   earlier host-side bootstrap (root/bin/sdk links to its own client, dead steam.pid,
   readerless steam.pipe). Clearing it is the fix; a clean recreate confirms it.
+- L7 (user): asked for non-Steam games and their save folders to be mounted
+automatically. Decision: game folders are derivable from `shortcuts.vdf`; save
+folders are not, because a game's save directory name is not its shortcut name and
+a wrong guess mounts the real `~/.config`. The user chose **full home parity**
+instead (S10), which makes both questions moot for anything inside the home and
+matches the actual goal: the same computer, run from the bed.
