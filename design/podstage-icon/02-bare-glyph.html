@@ -76,8 +76,10 @@ h1 { margin: 0 0 8px; font-size: 30px; line-height: 1.2; letter-spacing: -.01em;
     <p class="why">The safest bet for anything small, and the most 'console' of the three.</p>
     <p class="why">On a light panel the pad keeps its blue body and its details
     flip from cream to <code>#101319</code>: an inverted variant, not a second
-    design. A single SVG cannot know its background, so the inversion is a
-    decision something has to make at draw time.</p>
+    design. Shipped as <code>assets/podstage-light.svg</code>, chosen by
+    <code>desktop.icon_src()</code> only when Qt reports
+    <code>ColorScheme.Light</code> — never from the palette, which on a bare
+    Wayland session says "light" while the desktop is dark.</p>
     <p class="where"><b>Where it lands:</b> window icon, application menu entry,
     autostart entry and the tray — all four read the same
     <code>assets/podstage.svg</code>.</p>
