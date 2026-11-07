@@ -141,3 +141,33 @@ notice; a start of an unbootstrapped profile shows `starting …` immediately,
 keeps the window hidden, and replaces it with `Start session` plus a
 notification carrying the setup hint once the worker fails. The user's real
 config was not touched, so no second sandbox was created in it.
+
+L12 — User, after using it (verbatim): "el menu deberia ser - Open UI - Sessions -
+Quit. Tambien hay un bug, cuando abro el UI y si le doy quit desde el widget este
+se cierra pero deja bugeado el UI, porque lo dejo abierto pero no lo logro cerrar
+con super Q. Otra cosa que quiero agregar es que cuando tu abres podstage este
+tambien se abre directamente minimizado en la bandeja."
+
+S10 — Three-row tray menu. `Open UI`, `Sessions`, `Quit`. `Sessions` holds one
+row per sandbox (starting that one) or, while streaming, the
+`Session (running) — <sandbox>` indicator plus `Stop session`.
+
+S11 — Launch parks in the tray. Starting podstage registers the icon and shows
+no window; a host with no StatusNotifier tray still gets the window.
+
+S12 — Quit must always end the process. No state may leave a window on screen
+that cannot be closed.
+
+L13 — The quit bug, root-caused and reproduced. Driving the real path (window
+open, tray popup, Quit action) left `_quitting=True`, the window mapped and
+`app.exec()` never returning: `QApplication.quit()` posted from inside the tray
+popup's nested event loop is consumed by that loop, and `closeEvent` ignores
+everything while `_quitting`, so Super+Q could no longer close the window — exactly
+the report. Fix: `_begin_quit` closes the popup, `_finish_quit` hides the window
+and posts the quit outside the loop, `closeEvent` finishes the quit instead of
+swallowing it, and a last-resort `os._exit` after a 600 ms grace guarantees the
+process dies if a platform loop still eats it. Verified in the live session: the
+window is gone at 4 s and the log reports `exec returned: 0`, i.e. the graceful
+path wins again; the reproduction before the fix printed `BLOCKED`.
+Also verified: launching shows no window and registers the tray item (watcher
+5 items), and the rebuilt menu reads `Open UI / Sessions (shared) / Quit`.

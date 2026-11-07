@@ -20,7 +20,13 @@ import os
 import sys
 
 try:
-    from PyQt6.QtCore import QCoreApplication, QObject, Qt, pyqtSignal
+    from PyQt6.QtCore import (
+        QCoreApplication,
+        QObject,
+        Qt,
+        QTimer,
+        pyqtSignal,
+    )
     from PyQt6.QtGui import QGuiApplication, QIcon
     from PyQt6.QtWidgets import (
         QApplication,
@@ -52,6 +58,14 @@ from .pages.sandbox_page import SandboxPage
 from .pages.session_page import SessionPage
 from .pages.setup_page import SetupPage
 from .workers import PollWorker, start_action
+
+# A tray popup runs its own nested event loop and eats a quit posted from
+# inside it, so quitting waits this long for the popup to be gone.
+QUIT_AFTER_POPUP_MS = 200
+# ...and if a tray popup's nested loop eats that quit anyway, the process still
+# has to go: this is short enough to feel instant and long enough to let the
+# graceful path win when it can.
+QUIT_GRACE_MS = 600
 
 
 class AppContext(QObject):
@@ -90,6 +104,7 @@ class MainWindow(QMainWindow):
         self._tray: QSystemTrayIcon | None = None
         self._tray_menu: QMenu | None = None
         self._tray_action: str | None = None   # start/stop it fired
+        self._teardown_running = False         # stop-on-quit worker
         self._tray_available = False
         self._tray_notified = False    # the keep-running notice was shown
 
@@ -160,11 +175,20 @@ class MainWindow(QMainWindow):
         self._tray_menu = QMenu(self)
         self._tray.setContextMenu(self._tray_menu)
         self._tray.activated.connect(self._on_tray_activated)
+        # A popup that just closed is the moment the menu is safe to rebuild:
+        # rebuilding while it is open deletes the very action being clicked.
+        self._tray_menu.aboutToHide.connect(
+            lambda: QTimer.singleShot(0, self._refresh_tray))
         # Sandboxes are created and deleted in the window; the tray menu is
         # rebuilt on that signal instead of waiting for the next poll.
         self._ctx.config_changed.connect(self._refresh_tray)
         self._tray.show()
         self._refresh_tray()
+
+    @property
+    def tray_available(self) -> bool:
+        """True when a StatusNotifier host can hold the icon."""
+        return self._tray_available
 
     def _tray_pending(self) -> str | None:
         return self._tray_action or self._session_page.pending
@@ -178,6 +202,8 @@ class MainWindow(QMainWindow):
         tray, menu = self._tray, self._tray_menu
         if tray is None or menu is None:
             return
+        if menu.isVisible():
+            return  # the popup that is open owns these actions
         menu.clear()
         sandboxes = tuple(s.name for s in self._ctx.config.sessions)
         for entry in tray_model.menu(running=self._running,
@@ -328,7 +354,11 @@ class MainWindow(QMainWindow):
         """
         event.ignore()
         if self._quitting:
-            return  # the quit sequence owns the exit from here
+            # A close while quitting must still be a way out: swallowing it is
+            # what leaves a window nobody can close once the tray is gone.
+            if not self._teardown_running:
+                self._finish_quit()
+            return
         if tray_model.close_action(self._tray_available) == "hide":
             self.hide()
             self._notify_hidden()
@@ -357,6 +387,12 @@ class MainWindow(QMainWindow):
         if st.running and not self._confirm_quit(st):
             return
         self._quitting = True
+        # The tray menu runs its own nested event loop; a quit posted from
+        # inside it is consumed by that loop, so the process survives with a
+        # hidden tray and a window closeEvent now refuses to close. Closing the
+        # popup returns to the main loop before anything is posted.
+        if self._tray_menu is not None:
+            self._tray_menu.close()
         if self._poll is not None:
             self._poll.stop()
             self._poll.wait(1500)
@@ -364,11 +400,29 @@ class MainWindow(QMainWindow):
         if self._tray is not None:
             self._tray.hide()
         if not st.running:
-            QApplication.quit()
+            self._finish_quit()
             return
+        self._teardown_running = True
         self._global_state.setText(tr("stopping …"))
         start_action(self._pool, self._stop_container, "Stop",
                      self._on_teardown_done)
+
+    def _finish_quit(self) -> None:
+        """End the process, from the main loop and with a last resort.
+
+        A quit posted while the tray popup is open is consumed by that popup's
+        nested event loop: the app survives with its tray icon already hidden and
+        a window ``closeEvent`` refuses to close. Waiting out the popup costs
+        200 ms nobody sees and puts the quit back in the main loop.
+
+        The hard exit is the belt for anything that still swallows it. By then
+        everything is torn down (no poll, no log tail, no tray icon), so it can
+        only prevent a frozen window, never lose work.
+        """
+        self.hide()  # never leave a window behind, even for the grace period
+        QTimer.singleShot(QUIT_AFTER_POPUP_MS, QApplication.quit)
+        QTimer.singleShot(QUIT_AFTER_POPUP_MS + QUIT_GRACE_MS,
+                          lambda: os._exit(0))
 
     def _confirm_quit(self, st) -> bool:
         owner = f" ({st.client})" if st.client else ""
@@ -389,7 +443,8 @@ class MainWindow(QMainWindow):
         return "stopped"
 
     def _on_teardown_done(self, _ok: bool, _msg: str) -> None:
-        QApplication.quit()
+        self._teardown_running = False
+        self._finish_quit()
 
 
 def _light_background() -> bool | None:
@@ -457,7 +512,10 @@ def main(argv: list[str] | None = None) -> int:
     # Quit (tray menu, or the close button on a tray-less host) is the only exit.
     app.setQuitOnLastWindowClosed(False)
     win = MainWindow()
-    win.show()
+    # podstage is a resident app: it opens in the tray, not on the desktop. With
+    # no tray host that would strand it, so those hosts keep the window.
+    if not win.tray_available:
+        win.show()
     return app.exec()
 
 

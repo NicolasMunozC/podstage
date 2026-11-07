@@ -13,8 +13,7 @@ TEXTS: dict[str, str] = {
     "● running": "● läuft",
     "Sandboxes": "Sandboxen",
     # -- tray ------------------------------------------------------------
-    "Open window": "Fenster öffnen",
-    "Start session": "Session starten",
+    "Open UI": "UI öffnen",
     "Stop session": "Session stoppen",
     "Quit": "Beenden",
     "podstage — stopped": "podstage — gestoppt",

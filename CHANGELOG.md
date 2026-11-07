@@ -16,13 +16,18 @@ under *Fixed* does need `podstage runtime build`.
   `GenericName` and keywords, because most launchers match the entry's `Name`
   only — the word "consola" has to live there to be found. It launches with
   `Terminal=false`, so the GUI opens from the launcher with no shell.
-- **The tray starts the sandbox you pick, without opening the window.** `Start
-  session` is a submenu with one entry per sandbox, and while something streams
-  the menu shows `Session (running) — <sandbox>` plus `Stop session` instead of a
-  start list. Nothing opens the window: a start that needs an answer the tray
+- **The tray menu is three rows: Open UI, Sessions, Quit.** Everything
+  session-shaped lives under `Sessions`: one row per sandbox to start it, or
+  `Session (running) — <sandbox>` plus `Stop session` while something streams.
+  Nothing opens the window: a start that needs an answer the tray
   cannot give (a profile that asks for its resolution, or the desktop's sandbox
   Steam being open) says so in a notification, and a failure surfaces the same
   way rather than looking like a dead button.
+- **podstage opens in the tray, not on the desktop.** Launching it (from the
+  launcher, or `podstage desktop autostart on` at login) registers the tray icon
+  and shows no window; `Open UI` or a click on the icon brings it up. A host
+  without a StatusNotifier tray still gets the window, since hiding there would
+  strand the process with no way back.
 - **podstage lives in the system tray.** Closing the window now parks the process
   in the tray instead of ending the stream: the tray menu offers *Open window*,
   *Start session* / *Stop session* and *Quit*. A left click on the icon shows or
@@ -71,6 +76,13 @@ under *Fixed* does need `podstage runtime build`.
 
 ### Fixed
 
+- **Quit from the tray left a frozen window nothing could close.** The quit ran
+  inside the tray menu's nested event loop, which swallowed the posted quit: the
+  tray icon disappeared, the window stayed on screen, and because a quit was
+  already in progress every later close request was ignored — Super+Q hit a
+  window that could not be closed, and the process lingered. The quit now hides
+  the window first, posts the exit from outside that loop, and keeps a last-resort
+  exit so a frozen window can never outlive the process.
 - **The tray icon no longer turns into an info glyph when a session is
   parked.** The one-time "podstage keeps running" notice used
   `QSystemTrayIcon.showMessage`, and on a StatusNotifier host that flips the
