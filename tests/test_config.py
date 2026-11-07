@@ -354,6 +354,40 @@ def test_share_home_needs_a_shared_sandbox(tmp_path: Path):
     assert AppConfig.load(path).get("sh").share_home is True
 
 
+def test_shared_mode_forces_the_pc_wide_settings():
+    """A shared sandbox *is* this PC, so the settings that describe how much of
+    it to expose have one right answer: home mounted, libraries plain writable,
+    nothing picked from the library and nothing mounted by hand."""
+    sc = SessionConfig(name="s", steam_mode="shared")
+    assert sc.share_home is True
+    assert sc.library_rw is True
+    assert sc.app_ids == []
+    assert sc.extra_mounts == []
+
+    forced = SessionConfig(name="s2", steam_mode="shared", share_home=False,
+                           library_rw=False, app_ids=[10],
+                           extra_mounts=["/tmp/x"])
+    assert forced.share_home is True
+    assert forced.library_rw is True
+    assert forced.app_ids == []
+    assert forced.extra_mounts == []
+
+    # Isolated keeps every one of those a real decision.
+    iso = SessionConfig(name="i", app_ids=[10], extra_mounts=["/tmp/x"])
+    assert iso.share_home is False
+    assert iso.app_ids == [10]
+    assert iso.extra_mounts == ["/tmp/x"]
+
+
+def test_shared_session_reports_the_existing_one():
+    """There is one desktop, so creation refuses a second shared sandbox."""
+    one = SessionConfig(name="sh", steam_mode="shared")
+    cfg = AppConfig(sessions=[SessionConfig(name="iso"), one])
+    assert cfg.shared_session() is one
+    assert cfg.shared_session(exclude="sh") is None
+    assert AppConfig().shared_session() is None
+
+
 def test_steam_mode_defaults_to_isolated(tmp_path: Path):
     # Default isolated, also for configs written before the field existed.
     assert SessionConfig(name="s").steam_mode == "isolated"

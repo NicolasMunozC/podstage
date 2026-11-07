@@ -117,6 +117,35 @@ Consequences that are part of the spec, not surprises:
   disk therefore launches without a per-folder entry, and anything inside the home
   needs nothing at all.
 
+**S11 — A shared sandbox is the PC, so its shape is not a choice.** Exactly one
+shared sandbox can be created: there is one desktop, and stream settings belong on
+that single profile. Creation refuses a second one, while loading stays tolerant so
+a hand-edited config still opens; the single-instance guard remains the runtime
+invariant that actually protects the Steam data.
+
+In shared mode these settings are forced and locked, normalized in the config as
+well as shown disabled in the dialog, so a stale widget cannot lie:
+
+| Setting | Shared | Isolated |
+|---|---|---|
+| `share_home` | always on, locked | always off (meaningless) |
+| `library_rw` | always on, locked | editable |
+| `app_ids` (games picker) | empty, picker disabled | editable |
+| `extra_mounts` | empty, field disabled | editable |
+
+> "Solo se puede crear una sola sandbox en modo shared, ya que en teoria solo
+> existe un desktop, por lo que no deberia poder crearse mas no tiene sentido."
+
+> "Las configuraciones de un sandbox modo shared no deberia dejar configurar games
+> in sandbox mode. Tampoco extra mounts ... Host library auto tickeado y bloqueado
+> ... Home directory tambien compartido automaticamente ... son automaticas activas
+> y bloqueadas no modificables."
+
+Accepted consequence: in shared mode a game in a path outside the home and outside
+`/run/media`, `/media` and `/mnt` cannot be reached, because `extra_mounts` is not
+available there. If that ever happens, the fix is to widen the shared roots, not to
+reopen the per-profile field.
+
 ## Tasks
 
 Slice baseline: `b89433d`, already merged into `fork/main`. The 792 lines carried
@@ -194,6 +223,12 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
   the ownership-based detection. `S2,S7,S10`. inline. commit 05b51e6.
 - T19 — Docs: README/CHANGELOG for the three levels (isolated, shared, shared +
   full parity) and their blast radius. `S9,S10`. inline.
+- T20 — One shared sandbox: `AppConfig.shared_session()`, the dialog refusing a
+  second one with the reason, and editing the existing one still allowed. `S11`.
+  commit fc99769... (see the commit that lands it).
+- T21 — Lock the PC-wide settings in shared mode: config normalization plus the
+  dialog forcing and disabling the home, host-library, games and mounts rows.
+  `S11`. inline.
 
 ## Log
 
@@ -260,3 +295,8 @@ absent inside it, and Proton's session died in four seconds. The earlier inode
 inspection had "proved" visibility because it built `RuntimeOptions` by hand with
 `share_home=True`, a configuration the product never produced. Lesson recorded in
 T15: an option is only wired when a test drives it from the profile.
+- L10 (user): after the fix worked, the requested configuration rules — one shared
+sandbox only, and the PC-wide settings forced and locked in shared mode. Both
+recorded as S11 and implemented: the config normalizes what shared mode means, and
+the dialog shows it disabled instead of offering a half-shared sandbox, which is
+the class of configuration that produced L9.
