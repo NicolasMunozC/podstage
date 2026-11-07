@@ -53,7 +53,17 @@ if [ -n "${PS_SUN_DIR:-}" ]; then
                 # SIGKILLed child at ERROR). The -k fallback is required: on a
                 # static output wlr-screencopy delivers no frame and
                 # wf-recorder may act on no signal at all, hanging this loop.
-                timeout -s INT -k 2 2 wf-recorder -y -f /tmp/thumb.mp4 >/dev/null 2>&1
+                #
+                # The GUI shows exactly one frame, so the capture is shaped
+                # like one: -r 2 paces the encoder at 2 fps instead of the
+                # compositor's 60, and -F scales to the thumbnail width before
+                # encoding. Recording two seconds of full-resolution video and
+                # then keeping a single frame cost several cores on every
+                # round (measured: ~62% of one core while the stream sat idle
+                # after a client left); this is the same picture for a fraction
+                # of it.
+                timeout -s INT -k 2 1.2 wf-recorder -y -f /tmp/thumb.mp4 \
+                    -r 2 -F scale=640:-2 >/dev/null 2>&1
                 if [ -s /tmp/thumb.mp4 ] &&
                     ffmpeg -y -loglevel error -i /tmp/thumb.mp4 -frames:v 1 \
                         -vf scale=640:-2 "$TD/.thumb-tmp.png" 2>/dev/null; then

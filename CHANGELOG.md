@@ -6,7 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No image rebuild needed, the runtime image is unchanged.
+No image rebuild needed for the sandbox work below; the preview fix under
+*Fixed* does need `podstage runtime build`.
 
 ### Added
 
@@ -33,6 +34,16 @@ No image rebuild needed, the runtime image is unchanged.
 - **The single-instance guard reads process ownership.** A shared sandbox carries
   the desktop's own paths, so the cgroup is what separates the container's Steam
   from the client you opened yourself. Both modes still block a second client.
+
+### Fixed
+
+- **The preview thumbnail no longer records video to keep one frame.** The
+  sunshine preview loop captured two seconds of full-resolution video every
+  interval and then threw all but one frame away, which cost about 62% of one CPU
+  core while a session sat idle after a client left. The capture now runs at 2
+  fps and scales to the thumbnail width inside the encoder (`-r 2 -F
+  scale=640:-2`), so the same picture costs a fraction of the work. Rebuild the
+  runtime image to pick it up.
 
 ## [0.5.10] - 2026-11-04
 
