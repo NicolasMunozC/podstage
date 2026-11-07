@@ -18,6 +18,22 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO_ROOT / "ui.sh"
+UI_SCRIPT = REPO_ROOT / "ui.sh"
+VENV_UI = REPO_ROOT / ".venv/bin/podstage-ui"
+
+
+def launcher_path(venv_ui: Path, shell_script: Path) -> Path:
+    """The command a .desktop entry should run to open the window.
+
+    Prefer the console script the editable install creates: it *is* the entry
+    point, it carries its own interpreter, and it cannot fail the way ``ui.sh``
+    does when no interpreter on PATH has PyQt6. ``ui.sh`` stays as the fallback
+    for a checkout without a venv.
+    """
+    return venv_ui if venv_ui.exists() else shell_script
+
+
+LAUNCHER = launcher_path(VENV_UI, UI_SCRIPT)
 ICON_SRC = REPO_ROOT / "assets/podstage.svg"
 # Same pad with the details flipped from cream to near-black, for a light
 # panel. Only the Qt icon picks it (see icon_src); the .desktop entry draws
@@ -46,7 +62,7 @@ def icon_src(*, light_background: bool | None = None) -> Path:
     return ICON_SRC
 
 def desktop_entry(*, autostart: bool) -> str:
-    """A .desktop entry launching ui.sh. ``autostart`` adds the KDE
+    """A .desktop entry launching the GUI. ``autostart`` adds the KDE
     autostart-ordering hint; the menu variant adds launcher categories."""
     lines = [
         "[Desktop Entry]",

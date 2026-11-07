@@ -8,13 +8,15 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 # Pick a Python that has PyQt6. An explicit PS_QT_PYTHON wins; otherwise try the
-# system interpreters first (the common case) and fall back to Homebrew's (the
-# reference dev host, where PyQt6 lives in brew rather than the system Python).
+# repo's own venv first (what `pip install -e '.[ui]'` in this checkout creates,
+# and where PyQt6 usually ends up), then the system interpreters, then
+# Homebrew's (the reference dev host, where PyQt6 lives in brew).
 if [ -n "${PS_QT_PYTHON:-}" ]; then
     PY=$PS_QT_PYTHON
 else
     PY=""
-    for cand in python3 python /home/linuxbrew/.linuxbrew/bin/python3; do
+    for cand in "$SCRIPT_DIR/.venv/bin/python3" python3 python \
+                /home/linuxbrew/.linuxbrew/bin/python3; do
         if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "import PyQt6" 2>/dev/null; then
             PY=$cand
             break

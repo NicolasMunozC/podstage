@@ -116,3 +116,24 @@ def test_autostart_keeps_its_own_shape():
     assert "Name=podstage (consola)" in text
     assert "Categories" not in text
     assert "X-KDE-autostart-after=panel" in text
+
+
+# -- the Exec a desktop entry runs -----------------------------------------
+# A .desktop entry fails silently (Terminal=false), so its Exec has to be a
+# command that works: prefer the editable install's console script over ui.sh,
+# which depends on finding an interpreter with PyQt6.
+
+def test_launcher_prefers_the_console_script(paths):
+    venv_ui = paths / "podstage-ui"
+    venv_ui.write_text("#!/bin/sh\n")
+    shell = paths / "ui.sh"
+    assert desktop.launcher_path(venv_ui, shell) == venv_ui
+
+
+def test_launcher_falls_back_to_ui_sh_without_a_venv(paths):
+    assert desktop.launcher_path(paths / "missing", paths / "ui.sh") == \
+        paths / "ui.sh"
+
+
+def test_the_entry_exec_is_the_launcher_resolved_at_import(paths):
+    assert f"Exec={desktop.LAUNCHER}" in desktop.desktop_entry(autostart=False)
