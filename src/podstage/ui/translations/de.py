@@ -14,6 +14,8 @@ TEXTS: dict[str, str] = {
     "Sandboxes": "Sandboxen",
     # -- tray ------------------------------------------------------------
     "Open UI": "UI öffnen",
+    "Performance": "Leistung",
+    "Game {name}": "Spiel {name}",
     "Stop session": "Session stoppen",
     "Quit": "Beenden",
     "podstage — stopped": "podstage — gestoppt",
