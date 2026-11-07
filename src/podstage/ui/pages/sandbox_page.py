@@ -81,7 +81,7 @@ class ProfileDialog(QDialog):
         self._custom_label = tr("custom")
         self._pick_label = tr("Pick at startup")
 
-        form = QFormLayout(self)
+        form = self._form = QFormLayout(self)
         form.setSpacing(8)
         self._name = QLineEdit(existing.name if existing else "")
         self._name.setEnabled(existing is None)
@@ -248,8 +248,10 @@ class ProfileDialog(QDialog):
 
     def _sync_mode(self) -> None:
         """A shared sandbox is this PC, so the settings that decide how much of
-        it to expose are not choices: they are shown, forced and locked. The
-        config normalizes the same values, so a stale widget cannot lie.
+        it to expose are not choices: they are forced and locked by the config,
+        so their rows are not drawn either. A locked control only asks why it
+        cannot be changed. An isolated sandbox owns its install, so the same
+        rows are real choices there and stay visible.
 
         Giving a half-shared sandbox is what makes "my game will not launch"
         possible at all, which is the failure this guards against.
@@ -261,14 +263,23 @@ class ProfileDialog(QDialog):
 
         if shared:
             self._library_rw.setChecked(True)
-        self._library_rw.setEnabled(not shared)
-
-        for row in (self._games_box, self._mounts_box):
-            row.setEnabled(not shared)
-        if shared:
             # The session sees the real library, so "the whole library" is the
             # only truthful state the picker could show.
             self._all_games.setChecked(True)
+
+        for row in (self._library_rw, self._games_box, self._mounts_box):
+            row.setEnabled(not shared)
+
+        # Hiding is presentation only: the rows keep their forced values, which
+        # is what _on_accept reads, and `setRowVisible` takes the label with the
+        # field instead of needing every label kept in an attribute.
+        for row in (self._share_home, self._library_rw, self._games_box,
+                    self._mounts_box):
+            self._form.setRowVisible(row, not shared)
+        if self.isVisible():
+            # The mode can change while the dialog is open (a new profile), and
+            # a form does not shrink on its own when a row disappears.
+            self.adjustSize()
 
     def _on_browse_mount(self) -> None:
         """Append a picked host directory to the extra-mount list.

@@ -22,8 +22,11 @@ No image rebuild needed, the runtime image is unchanged.
   for external disks. The session writes to the real home: that is the trade for
   having nothing to configure.
 - **One shared sandbox, with a fixed shape.** Creating a second one is refused,
-  because there is one desktop, and the PC-wide settings are forced and locked:
-  home mounted, libraries writable, no games filter, no per-profile mounts.
+  because there is one desktop. The PC-wide settings are not choices, so the
+  profile dialog does not draw them — no home-directory switch, no host-library
+  switch, no games picker, no per-profile mounts — and an isolated sandbox keeps
+  all four. The values themselves stay forced: home mounted, libraries writable,
+  whole library, no extra mounts.
 
 ### Changed
 
