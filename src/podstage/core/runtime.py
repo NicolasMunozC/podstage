@@ -356,6 +356,13 @@ def shared_library_paths(home_dir: Path, provision: bool = True,
     return paths
 
 
+# Steam's own links under the sandbox HOME. In shared mode none of them may
+# point at a sandbox-local client: the launcher reads them before it reads the
+# host install. (".steam/root" is handled separately, because it is re-pointed
+# at the host install rather than dropped.)
+_SANDBOX_STEAM_LINKS = ("bin", "bin32", "bin64", "sdk32", "sdk64")
+
+
 def outside_steam_root(paths: list[Path], root: Path | None) -> list[Path]:
     """Drop paths already covered by a shared-mode host root mount.
 
@@ -404,13 +411,28 @@ def ensure_shared_steam_link(home_dir: Path, root: Path) -> Path:
     already-running client.
     """
     link = home_dir / ".steam" / "steam"
-    link.parent.mkdir(parents=True, exist_ok=True)
-    if link.exists() and not link.is_symlink():
-        raise RuntimeError(
-            f"{link} is a real directory, not a link. A shared sandbox keeps "
-            "its Steam in the host install; recreate the sandbox in shared mode.")
-    link.unlink(missing_ok=True)
-    link.symlink_to(root)
+    meta = home_dir / ".steam"
+    meta.mkdir(parents=True, exist_ok=True)
+    # A shared sandbox keeps no Steam state of its own. Leftovers from an
+    # isolated bootstrap are what the launcher follows before it ever reaches
+    # the host install: .steam/root and the bin/sdk links pointing at the
+    # sandbox's own client, plus a dead steam.pid and a steam.pipe with no
+    # reader. That is how a launch dies at three seconds without a message.
+    for name in ("steam.pid", "steam.pipe", "steam.token"):
+        (meta / name).unlink(missing_ok=True)
+    for name in _SANDBOX_STEAM_LINKS:
+        stale = meta / name
+        if stale.is_symlink():
+            stale.unlink()
+    for name in ("steam", "root"):
+        target = meta / name
+        if target.exists() and not target.is_symlink():
+            raise RuntimeError(
+                f"{target} is a real directory, not a link. A shared sandbox "
+                "keeps its Steam in the host install; recreate the sandbox in "
+                "shared mode.")
+        target.unlink(missing_ok=True)
+        target.symlink_to(root)
     launcher = root / "steam.sh"
     if not os.access(launcher, os.X_OK):
         raise RuntimeError(

@@ -901,6 +901,37 @@ def test_shared_link_guard_refuses_without_a_launcher(tmp_path: Path):
         runtime.ensure_shared_steam_link(tmp_path / "home", root)
 
 
+def test_shared_link_clears_stale_isolated_state(tmp_path: Path):
+    """A sandbox that was bootstrapped isolated keeps .steam/root and the
+    bin/sdk links pointing at its own client, plus a dead steam.pid and a pipe
+    with no reader. The launcher follows those before it ever reaches the host
+    install, which is how a launch dies in three seconds with no message."""
+    root = tmp_path / "Steam"
+    root.mkdir()
+    launcher = root / "steam.sh"
+    launcher.write_text("#!/bin/sh\n")
+    launcher.chmod(0o755)
+    own = tmp_path / "home" / ".local" / "share" / "Steam"
+    own.mkdir(parents=True)
+    meta = tmp_path / "home" / ".steam"
+    meta.mkdir(parents=True)
+    (meta / "steam.pid").write_text("999999")
+    (meta / "steam.token").write_text("stale")
+    os.mkfifo(meta / "steam.pipe")
+    for name in ("root", "bin32", "sdk64"):
+        (meta / name).symlink_to(own)
+
+    runtime.ensure_shared_steam_link(tmp_path / "home", root)
+
+    assert not (meta / "steam.pid").exists()
+    assert not (meta / "steam.token").exists()
+    assert not (meta / "steam.pipe").exists()
+    assert not (meta / "bin32").exists()
+    assert not (meta / "sdk64").exists()
+    assert (meta / "steam").resolve() == root.resolve()
+    assert (meta / "root").resolve() == root.resolve()
+
+
 def test_provisioning_reports_purged_orphan_downloads(tmp_path, monkeypatch, capsys):
     """A silent sweep of tens of GB would look like the sandbox shrinking on
     its own; the start log has to name it."""

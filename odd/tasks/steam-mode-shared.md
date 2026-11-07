@@ -97,6 +97,11 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
 - T5 — Create `<home>/.steam/steam` → host root before start; never mount the host
   `~/.steam`, so `bin_steam.sh` cannot forward the command line to a running desktop
   Steam via `steam.pipe`. `S1,S2,S7`. inline. commit 321c894.
+  Amendment: a sandbox previously bootstrapped isolated keeps `.steam/root` and the
+  `bin`/`bin32`/`bin64`/`sdk32`/`sdk64` links pointing at its own client, plus a dead
+  `steam.pid` and a `steam.pipe` with no reader — and the launcher follows those
+  before it reaches the host install. The guard now clears that state and points
+  both `steam` and `root` at the host root.
 - T6 — Pre-start guard: resolve the link, require an executable `steam.sh`, abort
   with a clear message otherwise. `S7`. inline. commit 321c894.
   Pending: the `doctor` readiness check, deferred with the UI work.
@@ -153,3 +158,12 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
   login of its own. Both GUI gates now skip the isolated questions in shared
   mode; `runtime.ensure_shared_steam_link` repairs a link left pointing at the
   sandbox's own client on the next start.
+- L6 (field failure, user): the shared session started, mounted correctly (the link
+  was repaired at start, no provisioning ran, and an in-container probe resolved
+  `.steam/steam` → the host root with an executable `steam.sh`), then the container
+  died 69 s in: labwc's child exited with 6 after 3 s and Steam never wrote a
+  `bootstrap_log` entry. Not networking: the Sunshine web UI had been reachable
+  while the container was briefly up, and nothing was listening afterwards, which is
+  why moonlight listed no host. The sandbox's `.steam` was still the one left by the
+  earlier host-side bootstrap (root/bin/sdk links to its own client, dead steam.pid,
+  readerless steam.pipe). Clearing it is the fix; a clean recreate confirms it.
