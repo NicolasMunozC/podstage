@@ -294,10 +294,18 @@ class SessionConfig:
         # sandbox's own install and login, so nothing of the host's is at risk.
         if self.steam_mode not in STEAM_MODES:
             self.steam_mode = "isolated"
-        # Parity means "run the desktop", which an isolated sandbox does not
-        # do: ignore the flag rather than leave a profile claiming something
-        # its mode cannot honour.
-        if self.steam_mode != "shared":
+        # A shared sandbox *is* this PC, so the settings that describe how much
+        # of it to expose have exactly one right answer and are not choices:
+        # the home is mounted, the libraries must stay plain read/write (there
+        # is no overlay to protect), and there is nothing to pick from the
+        # library or to add by hand, because the session sees the real thing.
+        # Isolated keeps every one of them as a real decision.
+        if self.steam_mode == "shared":
+            self.share_home = True
+            self.library_rw = True
+            self.app_ids = []
+            self.extra_mounts = []
+        else:
             self.share_home = False
 
     def is_shared(self) -> bool:
@@ -397,6 +405,18 @@ class AppConfig:
                        data.get("experimental", {}).get("perf_metrics", True))),
                    guide_hold_ms=int(data.get("guide_hold_ms", 2000)),
                    experimental=experimental)
+
+    def shared_session(self, exclude: str = "") -> "SessionConfig | None":
+        """The profile that already runs this PC's Steam, if any.
+
+        There is one desktop, so exactly one shared sandbox can make sense. The
+        rule is enforced where profiles are created (GUI and CLI); loading stays
+        tolerant, so a hand-edited config with two still opens.
+        """
+        for session in self.sessions:
+            if session.name != exclude and session.is_shared():
+                return session
+        return None
 
     @classmethod
     def load_or_seed(cls, path: Path = CONFIG_FILE) -> "AppConfig":

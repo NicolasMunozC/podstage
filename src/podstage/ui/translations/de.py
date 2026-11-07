@@ -451,6 +451,13 @@ TEXTS: dict[str, str] = {
     "Shared - the Steam of this PC":
         "Geteilt - das Steam dieses PCs",
     "Home directory": "Home-Verzeichnis",
+    "Shared sandbox already exists": "Geteilte Sandbox existiert bereits",
+    "'{name}' already runs this PC's Steam. Only one shared "
+    "sandbox makes sense, because there is only one desktop; "
+    "stream settings belong on that profile.":
+        "'{name}' nutzt bereits das Steam dieses PCs. Nur eine geteilte Sandbox "
+        "ergibt Sinn, denn es gibt nur einen Desktop; Streaming-Einstellungen "
+        "geh\u00f6ren auf dieses Profil.",
     "Share my home directory (configs, emulators, saves)":
         "Mein Home-Verzeichnis teilen (Konfigurationen, Emulatoren, Spielst\u00e4nde)",
     "Mounts this PC's home inside the session, so emulators, saves and "

@@ -159,7 +159,8 @@ class ProfileDialog(QDialog):
         form.addRow(self._kb_label, self._kb_row)
         self._sync_backend_note()
 
-        form.addRow(self._build_games(existing))
+        self._games_box = self._build_games(existing)
+        form.addRow(self._games_box)
 
         self._mounts = QPlainTextEdit()
         self._mounts.setPlaceholderText("/path/to/games\n/path/to/launcher:rw")
@@ -173,7 +174,7 @@ class ProfileDialog(QDialog):
         # The list stays editable text (that is how a path gets removed or an
         # existing entry switched), with a picker on top so a mount can be
         # added without typing a path from memory.
-        mount_box = QWidget()
+        mount_box = self._mounts_box = QWidget()
         mv = QVBoxLayout(mount_box)
         mv.setContentsMargins(0, 0, 0, 0)
         mv.setSpacing(6)
@@ -236,8 +237,8 @@ class ProfileDialog(QDialog):
             "the desktop."))
         self._share_home.setChecked(existing.share_home if existing else False)
         form.addRow(tr("Home directory"), self._share_home)
-        self._steam_mode.currentIndexChanged.connect(self._sync_share_home)
-        self._sync_share_home()
+        self._steam_mode.currentIndexChanged.connect(self._sync_mode)
+        self._sync_mode()
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
@@ -245,11 +246,29 @@ class ProfileDialog(QDialog):
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
 
-    def _sync_share_home(self) -> None:
-        """Full parity needs a shared sandbox, and is creation-time only: the
-        choice decides which filesystem the session owns."""
+    def _sync_mode(self) -> None:
+        """A shared sandbox is this PC, so the settings that decide how much of
+        it to expose are not choices: they are shown, forced and locked. The
+        config normalizes the same values, so a stale widget cannot lie.
+
+        Giving a half-shared sandbox is what makes "my game will not launch"
+        possible at all, which is the failure this guards against.
+        """
         shared = self._steam_mode.currentData() == "shared"
-        self._share_home.setEnabled(shared and self._existing is None)
+
+        self._share_home.setChecked(shared)
+        self._share_home.setEnabled(False)
+
+        if shared:
+            self._library_rw.setChecked(True)
+        self._library_rw.setEnabled(not shared)
+
+        for row in (self._games_box, self._mounts_box):
+            row.setEnabled(not shared)
+        if shared:
+            # The session sees the real library, so "the whole library" is the
+            # only truthful state the picker could show.
+            self._all_games.setChecked(True)
 
     def _on_browse_mount(self) -> None:
         """Append a picked host directory to the extra-mount list.
@@ -392,6 +411,18 @@ class ProfileDialog(QDialog):
                 tr("{n} of {total} games selected.", n=n, total=total))
 
     def _on_accept(self) -> None:
+        # Checked first: the mode-level refusal is the clearest reason, and it
+        # holds whatever the port or name look like.
+        if self._steam_mode.currentData() == "shared":
+            other = self._cfg.shared_session(
+                exclude=self._existing.name if self._existing else "")
+            if other is not None:
+                QMessageBox.warning(
+                    self, tr("Shared sandbox already exists"),
+                    tr("'{name}' already runs this PC's Steam. Only one shared "
+                       "sandbox makes sense, because there is only one desktop; "
+                       "stream settings belong on that profile.", name=other.name))
+                return
         name = self._name.text().strip()
         try:
             # Single source of truth — the same guard AppConfig.upsert enforces.
