@@ -105,6 +105,7 @@ class MainWindow(QMainWindow):
         self._tray_menu: QMenu | None = None
         self._tray_action: str | None = None   # start/stop it fired
         self._teardown_running = False         # stop-on-quit worker
+        self._metrics: tray_model.Metrics | None = None
         self._tray_available = False
         self._tray_notified = False    # the keep-running notice was shown
 
@@ -210,7 +211,8 @@ class MainWindow(QMainWindow):
                                      window_visible=self.isVisible(),
                                      pending=self._tray_pending(),
                                      sandboxes=sandboxes,
-                                     client=self._client):
+                                     client=self._client,
+                                     metrics=self._metrics):
             if entry.children:
                 submenu = menu.addMenu(entry.label)
                 if submenu is None:
@@ -223,6 +225,9 @@ class MainWindow(QMainWindow):
         tray.setToolTip(tray_model.tooltip(self._running, self._client))
 
     def _add_tray_action(self, menu: QMenu, entry: tray_model.Entry) -> None:
+        if entry.action == tray_model.SEPARATOR:
+            menu.addSeparator()
+            return
         action = menu.addAction(entry.label)
         if action is None:
             return
@@ -314,6 +319,7 @@ class MainWindow(QMainWindow):
         self._sandbox_page.on_snapshot(snap)
         self._running = snap.running
         self._client = snap.client_profile
+        self._metrics = _metrics_of(snap) if snap.running else None
         if snap.running:
             owner = f" | {snap.client_profile}" if snap.client_profile else ""
             self._global_state.setText(tr("● running") + owner)
@@ -466,6 +472,29 @@ def _light_background() -> bool | None:
     if scheme == known.Dark:
         return False
     return None
+
+
+def _metrics_of(snap: monitor.Snapshot) -> tray_model.Metrics:
+    """Flatten one snapshot into the numbers the tray's performance rows show.
+
+    The poll already paid for these; the tray only formats them. ``getattr``
+    keeps the two temperature fields optional, since a host or a GPU vendor may
+    simply not report them.
+    """
+    gpu, host, perf = snap.gpu, snap.host, snap.perf
+    return tray_model.Metrics(
+        cpu_pct=host.cpu_pct if host else None,
+        ram_used_mb=host.mem_used_mb if host else None,
+        ram_total_mb=host.mem_total_mb if host else None,
+        gpu_pct=gpu.util_pct if gpu else None,
+        vram_used_mb=gpu.mem_used_mb if gpu else None,
+        vram_total_mb=gpu.mem_total_mb if gpu else None,
+        gpu_temp_c=getattr(gpu, "temp_c", None),
+        cpu_temp_c=getattr(host, "cpu_temp_c", None),
+        encoder_sessions=gpu.encoder_sessions if gpu else None,
+        fps=perf.fps if perf else None,
+        game=snap.game.name if snap.game else None,
+    )
 
 
 def _notify(title: str, body: str) -> None:

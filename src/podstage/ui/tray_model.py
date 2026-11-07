@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from .i18n import tr
 
 OPEN_WINDOW = "open-window"
+SEPARATOR = "separator"
 SESSIONS_MENU = "sessions"
+PERFORMANCE = "performance"
+PERF_PREFIX = "perf:"
 START_PREFIX = "start:"
 STOP_SESSION = "stop-session"
 SESSION_STATUS = "session-status"
@@ -34,8 +37,26 @@ class Entry:
     children: tuple["Entry", ...] = ()
 
 
+@dataclass(frozen=True)
+class Metrics:
+    """The numbers the Load card shows, as the tray needs them."""
+
+    cpu_pct: float | None = None
+    ram_used_mb: int | None = None
+    ram_total_mb: int | None = None
+    gpu_pct: int | None = None
+    vram_used_mb: int | None = None
+    vram_total_mb: int | None = None
+    gpu_temp_c: int | None = None
+    cpu_temp_c: int | None = None
+    encoder_sessions: int | None = None
+    fps: float | None = None
+    game: str | None = None
+
+
 def menu(running: bool, window_visible: bool, pending: str | None = None,
          sandboxes: tuple[str, ...] = (), client: str | None = None,
+         metrics: "Metrics | None" = None,
          ) -> tuple[Entry, ...]:
     """The tray menu: the window, one ``Sessions`` submenu, quit.
 
@@ -43,14 +64,61 @@ def menu(running: bool, window_visible: bool, pending: str | None = None,
     three rows: with a session running it shows its state and offers
     ``Stop session``, and with nothing running it lists one row per sandbox.
     ``pending`` mirrors the in-flight action (``"start"``/``"stop"``) so the row
-    that fired cannot be fired again underneath itself.
+    that fired cannot be fired again underneath itself. ``metrics`` adds the
+    read-only performance section below the sessions, one row per number.
     """
-    return (
+    entries = [
         Entry(OPEN_WINDOW, tr("Open UI"), not window_visible),
+        Entry(SEPARATOR, ""),
         Entry(SESSIONS_MENU, tr("Sessions"), True,
               _session_entries(running, pending, sandboxes, client)),
-        Entry(QUIT, tr("Quit")),
-    )
+        Entry(SEPARATOR, ""),
+    ]
+    if metrics is not None:
+        entries.append(Entry(PERFORMANCE, tr("Performance"), False))
+        entries.extend(Entry(f"{PERF_PREFIX}{row}", row, False)
+                       for row in performance_rows(metrics))
+        entries.append(Entry(SEPARATOR, ""))
+    entries.append(Entry(QUIT, tr("Quit")))
+    return tuple(entries)
+
+
+def performance_rows(metrics: Metrics) -> tuple[str, ...]:
+    """One disabled row per metric: CPU, RAM, GPU, VRAM, sessions, fps, game.
+
+    Anything the host does not report is simply absent — a row that says nothing
+    is worse than no row. With nothing at all, one dash says so.
+    """
+    rows: list[str] = []
+    if metrics.cpu_pct is not None:
+        rows.append(_with_temp(tr("CPU {pct}%", pct=round(metrics.cpu_pct)),
+                               metrics.cpu_temp_c))
+    if metrics.ram_used_mb is not None and metrics.ram_total_mb:
+        rows.append(tr("RAM {used} / {total} GB",
+                       used=_gb(metrics.ram_used_mb),
+                       total=_gb(metrics.ram_total_mb)))
+    if metrics.gpu_pct is not None:
+        rows.append(_with_temp(tr("GPU {pct}%", pct=metrics.gpu_pct),
+                               metrics.gpu_temp_c))
+    if metrics.vram_used_mb is not None and metrics.vram_total_mb:
+        rows.append(tr("VRAM {used} / {total} GB",
+                       used=_gb(metrics.vram_used_mb),
+                       total=_gb(metrics.vram_total_mb)))
+    if metrics.encoder_sessions is not None:
+        rows.append(tr("{n} session(s)", n=metrics.encoder_sessions))
+    if metrics.fps is not None:
+        rows.append(tr("FPS {fps}", fps=round(metrics.fps)))
+    if metrics.game:
+        rows.append(tr("Game {name}", name=metrics.game))
+    return tuple(rows) if rows else ("—",)
+
+
+def _with_temp(label: str, temp_c: int | None) -> str:
+    return tr("{label} · {temp} °C", label=label, temp=temp_c) if temp_c is not None else label
+
+
+def _gb(mb: int) -> str:
+    return f"{mb / 1024:.1f}"
 
 
 def _session_entries(running: bool, pending: str | None,

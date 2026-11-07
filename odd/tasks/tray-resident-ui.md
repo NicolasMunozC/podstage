@@ -171,3 +171,37 @@ window is gone at 4 s and the log reports `exec returned: 0`, i.e. the graceful
 path wins again; the reproduction before the fix printed `BLOCKED`.
 Also verified: launching shows no window and registers the tray item (watcher
 5 items), and the rebuilt menu reads `Open UI / Sessions (shared) / Quit`.
+
+L14 — User, verbatim: "me podria gustar agregar solo para que sea mas informativo,
+y divisor con lo hay en los otros widgets de chatgpt o de wallpapers, que separa
+secciones, y que agregues una seccion abajo del todo, que sea rendimiento y
+muestre uso de CPU GPU TEMPERATURAS y todo eso que muestra de informacion el UI
+dentro. Una linea por item. (no es un hover opener)."
+
+S13 — Sectioned tray menu. Dividers separate the sections: `Open UI` |
+`Sessions` | `Performance` | `Quit`.
+
+S14 — A read-only performance section, one row per metric, plain menu rows (not a
+hover preview): CPU% with its temperature, RAM used/total, GPU% with its
+temperature, VRAM used/total, encoder sessions, FPS and the running game. The
+values come from the telemetry snapshot the poll already takes — the tray must
+not sample anything itself — and a metric the host does not report is omitted
+rather than shown empty. Nothing running means no section, because a stopped
+session samples nothing.
+
+L15 — Temperatures were not part of the telemetry at all (`GpuStats` had no
+temperature and `HostStats` had none), so the request added a sampling capability:
+the writer task adds `GpuStats.temp_c` (nvidia-smi in the same call, amdgpu
+hwmon) and `HostStats.cpu_temp_c` (k10temp/coretemp/zenboot hwmon, no extra
+sleep), and the menu reads them through `getattr` so the UI is not coupled to the
+field being there.
+
+L16 — Verification (S13/S14). `pytest` 422 passed (21 in
+`tests/test_tray_model.py`, 27 in `tests/test_monitor.py`), `ruff` clean,
+`pyright` 0 errors (23 pre-existing warnings). Temperatures confirmed on the real
+host instead of trusting the fixtures: `GpuStats(name='NVIDIA GeForce RTX 4060',
+util_pct=33, mem_used_mb=1529, mem_total_mb=8188, encoder_sessions=0, temp_c=43)`
+and `cpu_temp_c() == 60`; `host_stats(0.3)` carries `cpu_temp_c=60` and still
+sleeps only its own window. The menu built from a live snapshot reads
+`Performance / CPU 14% · 56 °C / RAM 4.2 / 15.5 GB / GPU 34% · 43 °C / VRAM 1.5 /
+8.0 GB / 0 session(s) / FPS 60 / Game Elden Ring` with dividers between sections.

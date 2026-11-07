@@ -23,6 +23,12 @@ under *Fixed* does need `podstage runtime build`.
   cannot give (a profile that asks for its resolution, or the desktop's sandbox
   Steam being open) says so in a notification, and a failure surfaces the same
   way rather than looking like a dead button.
+- **The tray shows what the Load card shows.** A `Performance` section under
+  `Sessions`, one read-only row per number — CPU and its temperature, RAM, GPU
+  and its temperature, VRAM, encoder sessions, FPS and the running game — with
+  dividers between the sections. The rows reuse the telemetry the poll already
+  takes, so nothing is sampled twice, and a metric the host does not report is
+  simply absent.
 - **podstage opens in the tray, not on the desktop.** Launching it (from the
   launcher, or `podstage desktop autostart on` at login) registers the tray icon
   and shows no window; `Open UI` or a click on the icon brings it up. A host
