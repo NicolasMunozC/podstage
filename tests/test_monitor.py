@@ -167,3 +167,26 @@ def test_host_stats_cpu_percentage_over_the_interval(monkeypatch):
     stats = monitor.host_stats(sample_interval=0)
     assert stats.cpu_pct == 50.0
     assert (stats.mem_used_mb, stats.mem_total_mb) == (8, 16)
+
+
+# -- GUI poll cadence -------------------------------------------------------
+# A snapshot costs ~0.4 s of sampling when a session runs and one podman
+# inspect when it does not, so the cadence is the GUI's idle-power knob.
+
+def test_visible_window_polls_at_the_interactive_rate():
+    assert monitor.poll_interval_ms(running=True, window_visible=True) == 2000
+    assert monitor.poll_interval_ms(running=False, window_visible=True) == 2000
+
+
+def test_a_hidden_running_session_still_reports_state():
+    # Slower than interactive, fast enough that the tray does not lie.
+    assert monitor.poll_interval_ms(running=True, window_visible=False) == 5000
+
+
+def test_a_hidden_idle_window_backs_off_hard():
+    assert monitor.poll_interval_ms(running=False, window_visible=False) == 10000
+
+
+def test_cadence_is_never_faster_than_the_interactive_rate():
+    states = [(r, v) for r in (False, True) for v in (False, True)]
+    assert min(monitor.poll_interval_ms(*s) for s in states) == 2000

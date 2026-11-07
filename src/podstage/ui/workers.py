@@ -12,17 +12,29 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from ..core import monitor
 
-POLL_MS = 2000
+POLL_MS = monitor.POLL_VISIBLE_MS
 
 
 class PollWorker(QThread):
-    """Emits a telemetry Snapshot every POLL_MS (the sample blocks ~0.4s)."""
+    """Emits a telemetry Snapshot every ``interval_ms`` (the sample blocks ~0.4s).
+
+    The interval is the GUI's power knob, not a fixed rate: ``ui.app`` calls
+    :meth:`set_interval` with ``monitor.poll_interval_ms`` whenever the window
+    is shown/hidden or the session starts/stops, so a tray-only process does
+    not keep sampling telemetry nobody can see.
+    """
 
     updated = pyqtSignal(object)
 
     def __init__(self) -> None:
         super().__init__()
         self._stop = False
+        self._interval_ms = POLL_MS
+
+    def set_interval(self, ms: int) -> None:
+        # Written from the UI thread and read once per cycle: the next sleep
+        # already uses the new value, so there is nothing to synchronize.
+        self._interval_ms = max(100, ms)
 
     def run(self) -> None:
         while not self._stop:
@@ -31,7 +43,8 @@ class PollWorker(QThread):
             except Exception as e:  # noqa: BLE001 — a hiccup must not kill polling
                 snap = monitor.Snapshot(False, detail=f"monitor error: {e}")
             self.updated.emit(snap)
-            for _ in range(POLL_MS // 100):  # sleep in slices → responsive stop
+            # sleep in slices → responsive stop
+            for _ in range(self._interval_ms // 100):
                 if self._stop:
                     break
                 self.msleep(100)
