@@ -152,6 +152,13 @@ Slice baseline: `b89433d`, already merged into `fork/main`. The 792 lines carrie
 from `fix/sandbox-login-ufw-gamepad` belong to that feature, not to this one, so
 this feature's slice counter starts at commit 1 below (not at `origin/main`).
 
+Delivery strategy, since the feature total exceeds the comfortable review size:
+each commit is one reviewable work unit under ~300 authored lines (core, GUI,
+gates, parity runtime, parity guard, locking, docs, plus two fixes), every one of
+them keeps the suite green and `ruff` clean, and behaviour ships together with its
+tests and its documentation. The native review candidate is therefore a work unit
+or the `feat/steam-mode-shared` branch, never a single pile of 1 000 lines.
+
 - T1 — Add `steam_mode: str = "isolated"` to `SessionConfig` with generic
   serialization round-trip; rejected values fall back to isolated. `S4,S5`.
   inline. commit 321c894.
