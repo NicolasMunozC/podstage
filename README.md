@@ -90,6 +90,40 @@ What is baked into the image vs. mounted at runtime, the exact run flags, and
 how input hotplug works inside the container is in
 [`containers/runtime/README.md`](containers/runtime/README.md).
 
+## Shared and isolated sandboxes
+
+A sandbox either brings its own Steam or runs the one you already use.
+
+**Isolated** (the default) gives the sandbox its own Steam install, its own login
+and its own Proton prefixes. That is what you want with more than one account: a
+profile per account, each with its own library view and its own saves.
+
+**Shared** runs the desktop Steam. Non-Steam shortcuts, grid art, per-game
+settings, the Proton mapping, `compatibilitytools.d` and every
+`compatdata/<appid>` prefix are then the same files as on the desktop, so the same
+saves and the same settings show up in the stream with no synchronisation step. It
+also mounts the host HOME at its real path, so emulators, their configs under
+`~/.config`, and any game folder inside the home are simply there.
+
+Because there is one desktop, only one shared sandbox can exist, and the settings
+that decide how much of the PC to expose are not choices: the home is mounted, the
+libraries are writable, and there is no games filter and no per-profile extra
+mount. Resolution, backend, gamepad and the stream name live on that one profile.
+
+Two rules come with it:
+
+- **Only one Steam at a time.** Starting a session closes the desktop Steam first;
+  Steam rewrites `shortcuts.vdf` and `localconfig.vdf` whole, so a second client
+  would erase the first one's changes.
+- **The stream writes to the real home.** A configuration broken during a stream is
+  broken on the desktop. That is the point of shared mode, and the reason isolated
+  stays the default.
+
+Anything Steam owns is shared. A game saving inside its Proton prefix is covered, a
+native build writing to `~/.config` or `~/Documents` is covered too because the
+home is mounted, and `/run/media`, `/media` and `/mnt` are mounted for external
+disks. Paths outside those are not reachable from a shared sandbox.
+
 ## Built on
 
 podstage bundles and drives upstream projects:
