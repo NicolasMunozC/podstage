@@ -86,6 +86,33 @@ build that writes to `~/.config`, `~/.local/share` or `~/Documents` without
 Proton keeps separate saves, and the honest fix there is an `extra_mounts` entry
 for that directory or forcing Proton for that game.
 
+**S10 — Full parity: the real `$HOME` (opt-in, shared sandboxes only).** The
+user's goal is not "shared Steam" but *the same computer*: install an emulator on
+the desktop, get into bed, start the shared console and continue. So an optional
+mode mounts the host HOME **at its real absolute path** read-write and runs the
+container with `HOME` set to it. Every `~/.config`, `~/.local/share`,
+`~/Documents` and every absolute path inside a game's or emulator's configuration
+then resolves exactly as on the desktop, with nothing derived, parsed or guessed.
+
+Consequences that are part of the spec, not surprises:
+
+- The stream writes to the real home. A configuration broken in the stream is
+  broken on the desktop. That is the accepted trade, and it is the only way to
+  get real parity without guesswork.
+- The Steam root arrives inside the home mount, so the separate root mount and the
+  `.steam` link are not used in this mode; the launcher is verified instead (S7
+  still applies).
+- Podstage's own state must stay out of the real home: the sandbox's
+  `.cache/podstage` is mounted over `<HOME>/.cache/podstage` inside the container,
+  so the host-side readers keep working unchanged and the real home gains no
+  podstage files.
+- The container's Steam is then indistinguishable from the desktop Steam **by
+  path**, which is exactly the point. The single-instance guard can therefore no
+  longer tell them apart by HOME path (S2 still binds): it must identify
+  podman-owned processes instead.
+- `share_home` is creation-time only, like `steam_mode`, and is ignored unless the
+  sandbox is shared.
+
 ## Tasks
 
 Slice baseline: `b89433d`, already merged into `fork/main`. The 792 lines carried
@@ -139,6 +166,22 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
   `$HOME`. README/CHANGELOG says so next to the existing `extra_mounts` advice, so
   "my save did not carry over" has an answer before it becomes a bug report.
   `S9`. inline.
+- T14 — `share_home: bool = False` on `SessionConfig`, normalized to False unless
+  `steam_mode == "shared"`; creation-time only. `S10`. inline.
+- T15 — Runtime: mount the real home at its real path rw, set `HOME` in the
+  container env, shadow `<sandbox>/.cache/podstage` over `<HOME>/.cache/podstage`,
+  skip the separate Steam-root mount and the `.steam` link, and verify the real
+  launcher instead. `S7,S10`. inline.
+- T16 — Single-instance guard by ownership: decide "is Steam running" from
+  processes not owned by podman (cgroup), not from the HOME path, so it works in
+  both modes and still refuses a second session. `S2,S10`. inline.
+- T17 — GUI: a creation-only checkbox, enabled only when the Steam mode is
+  shared, disabled when editing, with i18n. `S10`. inline.
+- T18 — Tests: mount list and `HOME` env for the mode, the state shadow, the
+  launcher guard on a home without an executable, and the ownership-based
+  detection ignoring a podman-owned Steam. `S2,S7,S10`. inline.
+- T19 — Docs: README/CHANGELOG for the three levels (isolated, shared, shared +
+  full parity) and their blast radius. `S9,S10`. inline.
 
 ## Log
 
