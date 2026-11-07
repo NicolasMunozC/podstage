@@ -169,6 +169,132 @@ def test_host_stats_cpu_percentage_over_the_interval(monkeypatch):
     assert (stats.mem_used_mb, stats.mem_total_mb) == (8, 16)
 
 
+# -- GPU telemetry (nvidia-smi CSV) ----------------------------------------
+
+def _patch_nvidia_smi(monkeypatch, out: str, rc: int = 0) -> list[list[str]]:
+    """Stand in for the subprocess and record the command line it was given."""
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, timeout=5):
+        calls.append(cmd)
+        return rc, out
+
+    monkeypatch.setattr(monitor, "_run", fake_run)
+    return calls
+
+
+def test_nvidia_parse_reads_temperature_from_the_same_query(monkeypatch):
+    """Temperature rides along in the existing nvidia-smi call: the poll runs
+    every couple of seconds, a second subprocess per tick is not free."""
+    calls = _patch_nvidia_smi(
+        monkeypatch,
+        "NVIDIA GeForce RTX 4070, 37, 1234, 12282, 1, 52")
+    stats = monitor._nvidia_gpu_stats()
+    assert len(calls) == 1  # not a second query for the temperature
+    assert "temperature.gpu" in calls[0][1]
+    assert stats is not None
+    assert stats.temp_c == 52
+    assert (stats.util_pct, stats.mem_used_mb, stats.mem_total_mb) == (37, 1234, 12282)
+    assert stats.encoder_sessions == 1
+
+
+def test_nvidia_parse_without_temperature_field_keeps_temp_none(monkeypatch):
+    # An older/hand-trimmed row must not shift the other columns or crash.
+    _patch_nvidia_smi(monkeypatch, "NVIDIA GeForce RTX 4070, 37, 1234, 12282, 1")
+    stats = monitor._nvidia_gpu_stats()
+    assert stats is not None
+    assert stats.temp_c is None
+    assert (stats.util_pct, stats.mem_used_mb, stats.mem_total_mb) == (37, 1234, 12282)
+
+
+def test_nvidia_parse_unreadable_temperature_is_none(monkeypatch):
+    # nvidia-smi prints "[N/A]" for fields the driver does not report.
+    _patch_nvidia_smi(monkeypatch, "NVIDIA GeForce RTX 4070, 37, 1234, 12282, 0, [N/A]")
+    stats = monitor._nvidia_gpu_stats()
+    assert stats is not None and stats.temp_c is None
+
+
+# -- temperatures -----------------------------------------------------------
+# hwmon and /sys/class/thermal both report millidegrees. Every lookup is
+# optional: no sensor means no number, never an exception in the poll thread.
+
+def _write(path, text: str):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + "\n")
+
+
+def test_amd_gpu_temp_is_millidegrees_to_celsius(monkeypatch, tmp_path):
+    dev = tmp_path / "device"
+    _write(dev / "gpu_busy_percent", "17")
+    _write(dev / "hwmon" / "hwmon3" / "temp1_input", "48000")
+    monkeypatch.setattr(monitor, "_amd_card_dir", lambda: dev)
+    stats = monitor._amd_gpu_stats()
+    assert stats is not None
+    assert stats.temp_c == 48
+    assert stats.util_pct == 17
+
+
+def test_amd_gpu_temp_missing_or_garbage_leaves_it_none(monkeypatch, tmp_path):
+    dev = tmp_path / "device"
+    _write(dev / "gpu_busy_percent", "17")
+    _write(dev / "hwmon" / "hwmon3" / "temp1_input", "[N/A]")
+    monkeypatch.setattr(monitor, "_amd_card_dir", lambda: dev)
+    stats = monitor._amd_gpu_stats()
+    assert stats is not None
+    assert stats.temp_c is None
+    assert stats.util_pct == 17  # one bad file does not blank the row
+
+
+def test_cpu_temp_from_hwmon_sensor(tmp_path):
+    hwmon, thermal = tmp_path / "hwmon", tmp_path / "thermal"
+    _write(hwmon / "hwmon0" / "name", "nvme")
+    _write(hwmon / "hwmon0" / "temp1_input", "81000")
+    _write(hwmon / "hwmon1" / "name", "k10temp")
+    _write(hwmon / "hwmon1" / "temp1_input", "61500")
+    assert monitor.cpu_temp_c(hwmon, thermal) == 62  # round(61.5)
+
+
+def test_cpu_temp_falls_back_to_a_cpu_thermal_zone(tmp_path):
+    hwmon, thermal = tmp_path / "hwmon", tmp_path / "thermal"
+    hwmon.mkdir()
+    _write(thermal / "thermal_zone0" / "type", "acpitz")
+    _write(thermal / "thermal_zone0" / "temp", "27000")
+    _write(thermal / "thermal_zone1" / "type", "x86_pkg_temp")
+    _write(thermal / "thermal_zone1" / "temp", "70000")
+    assert monitor.cpu_temp_c(hwmon, thermal) == 70
+
+
+def test_cpu_temp_is_none_when_no_sensor_exists(tmp_path):
+    hwmon, thermal = tmp_path / "hwmon", tmp_path / "thermal"
+    hwmon.mkdir()
+    thermal.mkdir()
+    assert monitor.cpu_temp_c(hwmon, thermal) is None
+    assert monitor.cpu_temp_c(tmp_path / "absent", tmp_path / "absent") is None
+
+
+def test_host_stats_carries_the_cpu_temp_without_extra_blocking(monkeypatch):
+    """The 0.4 s CPU window is the only sleep in a poll; the sensors are file
+    reads and must not add a second wait."""
+    monkeypatch.setattr(monitor, "_meminfo_mb", lambda: (8, 16))
+    monkeypatch.setattr(monitor, "cpu_temp_c", lambda: 55)
+    sleeps = []
+    monkeypatch.setattr(monitor.time, "sleep", lambda s: sleeps.append(s))
+    samples = iter([(100, 1000), (150, 1100)])
+    monkeypatch.setattr(monitor, "_proc_stat_cpu", lambda: next(samples))
+    stats = monitor.host_stats(sample_interval=0.4)
+    assert stats.cpu_temp_c == 55
+    assert sleeps == [0.4]  # exactly the CPU window, nothing more
+
+
+def test_host_stats_keeps_the_temp_when_proc_stat_is_unreadable(monkeypatch):
+    monkeypatch.setattr(monitor, "_proc_stat_cpu", lambda: None)
+    monkeypatch.setattr(monitor, "_meminfo_mb", lambda: (8, 16))
+    monkeypatch.setattr(monitor, "cpu_temp_c", lambda: 55)
+    stats = monitor.host_stats(sample_interval=0)
+    assert (stats.cpu_pct, stats.mem_used_mb, stats.mem_total_mb) == (None, 8, 16)
+    assert stats.cpu_temp_c == 55
+
+
 # -- GUI poll cadence -------------------------------------------------------
 # A snapshot costs ~0.4 s of sampling when a session runs and one podman
 # inspect when it does not, so the cadence is the GUI's idle-power knob.
