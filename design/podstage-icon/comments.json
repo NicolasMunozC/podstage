@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "comments": [
+    {
+      "id": "xdfg8pdm",
+      "file": "02-bare-glyph.html",
+      "selector": "body > section > div:nth-of-type(2) > div:nth-of-type(2)",
+      "excerpt": "",
+      "comment": "Quizas en version de fondos clara, osea light, el icono deberia invertir sus colores, que en vez de blanco sea negro, asi funcionaria bien.",
+      "createdAt": "2026-11-07T18:57:31.415Z",
+      "status": "resolved",
+      "sentAt": "2026-11-07T18:57:31.437Z",
+      "resolvedAt": "2026-11-07T18:57:46.959Z"
+    }
+  ]
+}

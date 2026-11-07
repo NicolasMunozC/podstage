@@ -1,0 +1,16 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- glyph only: no tile, silhouette must survive a 22 px tray slot -->
+  <g fill="#e8eef8">
+    <rect x="52" y="78" width="52" height="28" rx="12"/>
+    <rect x="152" y="78" width="52" height="28" rx="12"/>
+    <rect x="28" y="92" width="200" height="92" rx="40"/>
+  </g>
+  <g fill="#111318">
+    <rect x="72" y="128" width="52" height="16" rx="5"/>
+    <rect x="90" y="110" width="16" height="52" rx="5"/>
+    <circle cx="164" cy="122" r="9"/>
+    <circle cx="186" cy="138" r="9"/>
+    <circle cx="164" cy="154" r="9"/>
+    <circle cx="142" cy="138" r="9"/>
+  </g>
+</svg>

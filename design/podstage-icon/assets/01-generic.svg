@@ -1,0 +1,32 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="128" y1="8" x2="128" y2="248" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#20242c"/>
+      <stop offset="1" stop-color="#111318"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#tile)"/>
+  <g fill="#e8eef8">
+    <rect x="50" y="94" width="156" height="58" rx="26"/>
+    <rect x="44" y="118" width="58" height="100" rx="29" transform="rotate(-11 73 168)"/>
+    <rect x="154" y="118" width="58" height="100" rx="29" transform="rotate(11 183 168)"/>
+  </g>
+  <!-- left analog, staggered high -->
+  <circle cx="86" cy="120" r="15" fill="#111318"/>
+  <circle cx="86" cy="120" r="15" fill="none" stroke="#6f9bff" stroke-width="4"/>
+  <!-- d-pad low left -->
+  <g fill="#111318">
+    <rect x="70" y="170" width="36" height="12" rx="4"/>
+    <rect x="82" y="158" width="12" height="36" rx="4"/>
+  </g>
+  <!-- face buttons high right -->
+  <g fill="#6f9bff">
+    <circle cx="170" cy="106" r="6"/>
+    <circle cx="186" cy="120" r="6"/>
+    <circle cx="170" cy="134" r="6"/>
+    <circle cx="154" cy="120" r="6"/>
+  </g>
+  <!-- right analog low right -->
+  <circle cx="170" cy="174" r="15" fill="none" stroke="#6f9bff" stroke-width="4"/>
+  <circle cx="170" cy="174" r="6" fill="#6f9bff"/>
+</svg>
