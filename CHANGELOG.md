@@ -43,7 +43,11 @@ under *Fixed* does need `podstage runtime build`.
   icon is one console pad with a d-pad and four face buttons, in podstage blue on
   a transparent background. It is the same `assets/podstage.svg` for the window,
   the menu entry, autostart and the tray, and it stays readable at the 22 px the
-  tray gives it. An already-installed copy is refreshed by running
+  tray gives it. On a desktop that reports a light colour scheme the window and
+  tray icon swap to `assets/podstage-light.svg`, the same pad with its details
+  flipped to near-black, because cream ones vanish on a light panel; when Qt
+  cannot say (`ColorScheme.Unknown`, e.g. a bare Wayland session) the regular
+  asset is used. An already-installed copy is refreshed by running
   `podstage desktop menu on` again.
 - **The telemetry poll follows what you can see.** A tray-only podstage with no
   session polls every 10 s instead of every 2 s, a hidden window with a running

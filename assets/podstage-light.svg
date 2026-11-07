@@ -1,0 +1,27 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- podstage app icon, light-panel variant: identical to podstage.svg
+       except the details are near-black instead of cream, which is what
+       survives on a light panel. Only the Qt icon draws this one.
+       The body is podstage blue rather than bare cream so the glyph keeps its
+       edge on a light panel (menu entry, light taskbar) as well as on the dark
+       bar it was picked on; a cream-only silhouette disappeared on light.
+       Same file feeds the window icon, the .desktop entry, autostart and the
+       tray, so everything below 32 px is drawn with thick shapes on purpose. -->
+  <g fill="#2b6cff">
+    <!-- shoulder bumps -->
+    <rect x="52" y="78" width="52" height="28" rx="12"/>
+    <rect x="152" y="78" width="52" height="28" rx="12"/>
+    <!-- body -->
+    <rect x="28" y="92" width="200" height="92" rx="40"/>
+  </g>
+  <g fill="#101319">
+    <!-- cross d-pad -->
+    <rect x="72" y="128" width="52" height="16" rx="5"/>
+    <rect x="90" y="110" width="16" height="52" rx="5"/>
+    <!-- four face buttons -->
+    <circle cx="164" cy="122" r="9"/>
+    <circle cx="186" cy="138" r="9"/>
+    <circle cx="164" cy="154" r="9"/>
+    <circle cx="142" cy="138" r="9"/>
+  </g>
+</svg>

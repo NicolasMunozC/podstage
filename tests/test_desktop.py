@@ -64,3 +64,30 @@ def test_remove_all_clears_entries_and_icon(paths, monkeypatch):
 def test_entry_variants():
     assert "X-KDE-autostart-after" in desktop.desktop_entry(autostart=True)
     assert "Categories" in desktop.desktop_entry(autostart=False)
+
+
+# -- which icon asset to draw ----------------------------------------------
+# The pad keeps its blue body either way; only the details invert, because a
+# cream cross disappears on a light panel. The app draws a QIcon, so the
+# decision has to be made at draw time — the .desktop entry cannot adapt.
+
+def test_unknown_background_uses_the_dark_asset(paths):
+    assert desktop.icon_src(light_background=None) == desktop.ICON_SRC
+    assert desktop.icon_src() == desktop.ICON_SRC
+
+
+def test_light_background_uses_the_inverted_asset(paths, monkeypatch):
+    light = paths / "podstage-light.svg"
+    light.write_text("<svg/>")
+    monkeypatch.setattr(desktop, "ICON_LIGHT_SRC", light)
+    assert desktop.icon_src(light_background=True) == light
+
+
+def test_a_light_asset_that_is_not_installed_falls_back(paths, monkeypatch):
+    # Shipping the code without the file must not produce a blank icon.
+    monkeypatch.setattr(desktop, "ICON_LIGHT_SRC", paths / "missing.svg")
+    assert desktop.icon_src(light_background=True) == desktop.ICON_SRC
+
+
+def test_the_dark_asset_ignores_a_light_background_claim(paths):
+    assert desktop.icon_src(light_background=False) == desktop.ICON_SRC

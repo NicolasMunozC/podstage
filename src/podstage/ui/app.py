@@ -19,8 +19,8 @@ import os
 import sys
 
 try:
-    from PyQt6.QtCore import QCoreApplication, QObject, pyqtSignal
-    from PyQt6.QtGui import QAction, QIcon
+    from PyQt6.QtCore import QCoreApplication, QObject, Qt, pyqtSignal
+    from PyQt6.QtGui import QAction, QGuiApplication, QIcon
     from PyQt6.QtWidgets import (
         QApplication,
         QFrame,
@@ -337,10 +337,32 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
 
+def _light_background() -> bool | None:
+    """Whether Qt knows the colour scheme, and which one it is.
+
+    ``None`` means "cannot tell": a bare Wayland session reports
+    ``ColorScheme.Unknown`` and a *light* default palette, which is why the
+    palette is not a fallback — on a dark desktop without a platform theme it
+    would answer "light" and hand back the inverted icon.
+    """
+    hints = QGuiApplication.styleHints()
+    probe = getattr(hints, "colorScheme", None)  # Qt < 6.5 has no such hint
+    scheme: object = probe() if probe is not None else None
+    known = getattr(Qt, "ColorScheme", None)
+    if known is None:
+        return None
+    if scheme == known.Light:
+        return True
+    if scheme == known.Dark:
+        return False
+    return None
+
+
 def _app_icon() -> QIcon:
     from ..core import desktop
-    if desktop.ICON_SRC.exists():
-        return QIcon(str(desktop.ICON_SRC))
+    src = desktop.icon_src(light_background=_light_background())
+    if src.exists():
+        return QIcon(str(src))
     return QIcon.fromTheme("applications-games")
 
 
