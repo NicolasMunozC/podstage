@@ -81,6 +81,26 @@ def test_start_isolated_still_requires_a_login(monkeypatch):
         s.start()
 
 
+def test_share_home_reaches_the_podman_args(monkeypatch):
+    """Threading guard, learned the hard way: a profile flag that survives the
+    config but stops at _options() silently downgrades the session to plain
+    shared mode, and the user only sees "the game will not launch"."""
+    from pathlib import Path
+
+    from podstage.core import runtime
+
+    monkeypatch.setattr(runtime, "gpu_vendor", lambda: "nvidia")
+    monkeypatch.setattr(runtime, "shared_steam_root", lambda: Path("/tmp/host-steam"))
+    monkeypatch.setattr(runtime, "host_home", lambda: Path("/home/tester"))
+    sc = SessionConfig(name="deck", steam_mode="shared", share_home=True)
+
+    joined = " ".join(runtime.podman_run_args(
+        Session(sc)._options(), library_paths=[Path("/tmp/lib/steamapps")]))
+
+    assert "-v /home/tester:/home/tester" in joined
+    assert "HOME=/home/tester" in joined
+
+
 def test_host_steam_running_uses_ownership_in_full_parity(monkeypatch):
     """A full-parity sandbox runs the desktop install, so the container's Steam
     carries the desktop's own paths. Only the cgroup separates them there."""
