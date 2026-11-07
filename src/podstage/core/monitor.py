@@ -7,8 +7,12 @@ Everything here is readable as the plain user (the container is rootless):
     still has room to encode and stream, and the desktop's own load counts.
     It is also the only reading that works on both backends.
   * GPU/NVENC come from ``nvidia-smi`` on NVIDIA, the amdgpu sysfs
-    (``gpu_busy_percent`` + ``mem_info_vram_*``) on AMD, or one
-    ``intel_gpu_top -J`` sample on Intel (needs a readable GPU PMU).
+    (``gpu_busy_percent`` + ``mem_info_vram_*`` + the hwmon temperature) on
+    AMD, or one ``intel_gpu_top -J`` sample on Intel (needs a readable GPU
+    PMU, and exposes no temperature).
+  * The CPU package temperature from ``/sys/class/hwmon`` (k10temp, coretemp,
+    zenpower) with ``/sys/class/thermal`` as the fallback. Plain file reads,
+    so it costs nothing on top of the CPU sampling window.
   * The active game from the running ``SteamLaunch AppId=`` process.
   * Game FPS comes from the in-container perf probe, which asks gamescope for
     the presented frametime of the focused app and drops the current rate into
@@ -79,16 +83,20 @@ class GpuStats:
     mem_used_mb: int | None = None
     mem_total_mb: int | None = None
     encoder_sessions: int | None = None  # NVENC only; AMD exposes no counter
+    temp_c: int | None = None  # die/edge °C; always None on Intel
 
 
 def gpu_stats() -> GpuStats | None:
-    """GPU utilization + VRAM for the Load card, dispatched by GPU vendor.
+    """GPU utilization + VRAM + temperature for the Load card, dispatched by
+    GPU vendor.
 
-    NVIDIA reads ``nvidia-smi`` (including the NVENC session count). AMD reads
-    the amdgpu sysfs (``gpu_busy_percent`` + ``mem_info_vram_*``); the kernel
-    exposes no per-encoder session count there, so ``encoder_sessions`` stays
-    None on AMD. Intel (i915/xe) has no sysfs interface at all — the busy
-    percentage comes from one ``intel_gpu_top`` sample where available."""
+    NVIDIA reads ``nvidia-smi`` (utilization, VRAM, the NVENC session count and
+    ``temperature.gpu``, all in one query). AMD reads the amdgpu sysfs
+    (``gpu_busy_percent`` + ``mem_info_vram_*`` + hwmon ``temp1_input``); the
+    kernel exposes no per-encoder session count there, so ``encoder_sessions``
+    stays None on AMD. Intel (i915/xe) has no sysfs interface at all — the busy
+    percentage comes from one ``intel_gpu_top`` sample where available, and
+    ``temp_c`` stays None because reading it would need another tool."""
     vendor = runtime.gpu_vendor()
     if vendor == "amd":
         return _amd_gpu_stats()
@@ -100,7 +108,8 @@ def gpu_stats() -> GpuStats | None:
 def _nvidia_gpu_stats() -> GpuStats | None:
     rc, out = _run([
         "nvidia-smi",
-        "--query-gpu=name,utilization.gpu,memory.used,memory.total,encoder.stats.sessionCount",
+        ("--query-gpu=name,utilization.gpu,memory.used,memory.total,"
+         "encoder.stats.sessionCount,temperature.gpu"),
         "--format=csv,noheader,nounits",
     ])
     if rc != 0 or not out:
@@ -109,14 +118,14 @@ def _nvidia_gpu_stats() -> GpuStats | None:
 
     def _int(i: int) -> int | None:
         try:
-            return int(parts[i])
+            return int(parts[i])  # "[N/A]" (driver has no sensor) is None
         except (ValueError, IndexError):
             return None
 
     return GpuStats(
         name=parts[0] if parts else "",
         util_pct=_int(1), mem_used_mb=_int(2), mem_total_mb=_int(3),
-        encoder_sessions=_int(4),
+        encoder_sessions=_int(4), temp_c=_int(5),
     )
 
 
@@ -128,6 +137,18 @@ def _sysfs_int(path: Path) -> int | None:
         return int(path.read_text().strip())
     except (OSError, ValueError):
         return None
+
+
+def _millideg_to_c(milli: int | None) -> int | None:
+    """hwmon/thermal report millidegrees; every surface here wants whole °C."""
+    return None if milli is None else round(milli / 1000)
+
+
+def _hwmon_dirs(dev: Path) -> list[Path]:
+    try:
+        return sorted(p for p in (dev / "hwmon").glob("hwmon*") if p.is_dir())
+    except OSError:
+        return []
 
 
 def _amd_card_dir() -> Path | None:
@@ -156,7 +177,12 @@ def _amd_gpu_stats() -> GpuStats | None:
     busy = _sysfs_int(dev / "gpu_busy_percent")     # 0..100
     used = _sysfs_int(dev / "mem_info_vram_used")   # bytes
     total = _sysfs_int(dev / "mem_info_vram_total")  # bytes
-    if busy is None and used is None and total is None:
+    # The amdgpu hwmon is temp1 = edge, temp2 = junction. Edge is what a
+    # "GPU temperature" means to a user; anything unreadable is just None.
+    temps = [_millideg_to_c(_sysfs_int(h / "temp1_input"))
+             for h in _hwmon_dirs(dev)]
+    temp_c = next((t for t in temps if t is not None), None)
+    if busy is None and used is None and total is None and temp_c is None:
         return None
     return GpuStats(
         name="AMD GPU",
@@ -164,6 +190,7 @@ def _amd_gpu_stats() -> GpuStats | None:
         mem_used_mb=used // (1 << 20) if used is not None else None,
         mem_total_mb=total // (1 << 20) if total is not None else None,
         encoder_sessions=None,
+        temp_c=temp_c,
     )
 
 
@@ -261,15 +288,67 @@ class HostStats:
     cpu_pct: float | None = None      # 0..100 across all cores
     mem_used_mb: int | None = None
     mem_total_mb: int | None = None
+    cpu_temp_c: int | None = None     # package °C; None without a sensor
+
+
+_HWMON_ROOT = Path("/sys/class/hwmon")
+_THERMAL_ROOT = Path("/sys/class/thermal")
+
+# hwmon drivers that report a CPU package temperature as temp1_input.
+_CPU_HWMON_NAMES = ("k10temp", "coretemp", "zenpower")
+# Thermal-zone types that name a CPU sensor; the rest are ACPI corners, GPU
+# hotspots or batteries and would mislabel another part as the CPU.
+_CPU_THERMAL_TYPES = ("x86_pkg_temp", "cpu", "soc")
+
+
+def _hwmon_cpu_temp(root: Path) -> int | None:
+    for hwmon in sorted(root.glob("hwmon*")):
+        try:
+            name = (hwmon / "name").read_text().strip()
+        except OSError:
+            continue
+        if name in _CPU_HWMON_NAMES:
+            temp = _millideg_to_c(_sysfs_int(hwmon / "temp1_input"))
+            if temp is not None:
+                return temp
+    return None
+
+
+def _thermal_cpu_temp(root: Path) -> int | None:
+    for zone in sorted(root.glob("thermal_zone*")):
+        try:
+            kind = (zone / "type").read_text().strip().lower()
+        except OSError:
+            continue
+        if not any(k in kind for k in _CPU_THERMAL_TYPES):
+            continue
+        temp = _millideg_to_c(_sysfs_int(zone / "temp"))
+        if temp is not None:
+            return temp
+    return None
+
+
+def cpu_temp_c(hwmon_root: Path | None = None,
+               thermal_root: Path | None = None) -> int | None:
+    """CPU package temperature in whole °C, or None when the box exposes no
+    readable sensor. Two directory listings of plain files: cheap enough to
+    ride along with the CPU sample, and it never blocks."""
+    temp = _hwmon_cpu_temp(_HWMON_ROOT if hwmon_root is None else hwmon_root)
+    if temp is None:
+        temp = _thermal_cpu_temp(
+            _THERMAL_ROOT if thermal_root is None else thermal_root)
+    return temp
 
 
 def host_stats(sample_interval: float = 0.4) -> HostStats:
-    """CPU% over ``sample_interval`` and RAM of the whole machine. Blocks for
-    ``sample_interval`` to take two CPU samples, so call it off the UI thread."""
+    """CPU% over ``sample_interval``, RAM and CPU temperature of the whole
+    machine. Blocks for ``sample_interval`` to take two CPU samples, so call it
+    off the UI thread; the temperature is a file read and adds no wait."""
     used_mb, total_mb = _meminfo_mb()
+    temp_c = cpu_temp_c()
     first = _proc_stat_cpu()
     if first is None:
-        return HostStats(None, used_mb, total_mb)
+        return HostStats(None, used_mb, total_mb, temp_c)
     time.sleep(sample_interval)
     second = _proc_stat_cpu()
     cpu_pct = None
@@ -277,7 +356,7 @@ def host_stats(sample_interval: float = 0.4) -> HostStats:
         d_busy, d_total = second[0] - first[0], second[1] - first[1]
         if d_total > 0:
             cpu_pct = round(max(0.0, min(100.0, d_busy * 100 / d_total)), 1)
-    return HostStats(cpu_pct, used_mb, total_mb)
+    return HostStats(cpu_pct, used_mb, total_mb, temp_c)
 
 
 # -- game FPS from the in-container perf probe ------------------------------
