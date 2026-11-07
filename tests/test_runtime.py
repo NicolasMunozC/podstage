@@ -932,6 +932,43 @@ def test_shared_link_clears_stale_isolated_state(tmp_path: Path):
     assert (meta / "root").resolve() == root.resolve()
 
 
+def test_share_home_mounts_the_real_home_and_shadows_state(monkeypatch):
+    """Full parity runs inside the desktop HOME at its real path, so every
+    absolute path in a game's or emulator's configuration resolves as it does
+    on the desktop. Podstage's own state is shadowed out of that home, or the
+    host-side readers and the real home would both be wrong."""
+    monkeypatch.setattr(runtime, "gpu_vendor", lambda: "nvidia")
+    monkeypatch.setattr(runtime, "shared_steam_root", lambda: SHARED_ROOT)
+    monkeypatch.setattr(runtime, "host_home", lambda: Path("/home/tester"))
+
+    joined = " ".join(runtime.podman_run_args(
+        _opts(steam_mode="shared", share_home=True), library_paths=LIBS))
+
+    assert "-v /home/tester:/home/tester" in joined
+    assert "-v /tmp/home-x/.cache/podstage:/home/tester/.cache/podstage" in joined
+    assert "HOME=/home/tester" in joined
+    # The install arrives inside the home mount; mounting it again would nest.
+    assert f"-v {SHARED_ROOT}:{SHARED_ROOT}" not in joined
+    # Libraries stay plain: an overlay over a shared install is a fiction.
+    assert ":O,upperdir=" not in joined
+
+
+def test_share_home_off_keeps_the_separate_root_mount(monkeypatch):
+    monkeypatch.setattr(runtime, "gpu_vendor", lambda: "nvidia")
+    monkeypatch.setattr(runtime, "shared_steam_root", lambda: SHARED_ROOT)
+    joined = " ".join(runtime.podman_run_args(
+        _opts(steam_mode="shared"), library_paths=LIBS))
+    assert f"-v {SHARED_ROOT}:{SHARED_ROOT}" in joined
+    assert "-v /home/tester:/home/tester" not in joined
+
+
+def test_verify_shared_launcher_needs_an_executable(tmp_path: Path):
+    root = tmp_path / "Steam"
+    root.mkdir()
+    with pytest.raises(RuntimeError, match="executable"):
+        runtime.verify_shared_launcher(root)
+
+
 def test_provisioning_reports_purged_orphan_downloads(tmp_path, monkeypatch, capsys):
     """A silent sweep of tens of GB would look like the sandbox shrinking on
     its own; the start log has to name it."""

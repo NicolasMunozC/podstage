@@ -341,6 +341,19 @@ def test_library_rw_default_and_roundtrip(tmp_path: Path):
     assert AppConfig.load(path).get("rw").library_rw is True
 
 
+def test_share_home_needs_a_shared_sandbox(tmp_path: Path):
+    # Off by default, and meaningless for an isolated one: a profile must not
+    # claim parity its mode cannot honour.
+    assert SessionConfig(name="s").share_home is False
+    assert SessionConfig(name="s", share_home=True).share_home is False
+    assert SessionConfig(name="s", steam_mode="shared",
+                         share_home=True).share_home is True
+    path = tmp_path / "config.toml"
+    AppConfig(sessions=[SessionConfig(name="sh", steam_mode="shared",
+                                      share_home=True)]).save(path)
+    assert AppConfig.load(path).get("sh").share_home is True
+
+
 def test_steam_mode_defaults_to_isolated(tmp_path: Path):
     # Default isolated, also for configs written before the field existed.
     assert SessionConfig(name="s").steam_mode == "isolated"

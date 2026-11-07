@@ -190,6 +190,10 @@ class RuntimeOptions:
     # Shared resolves the host install at start time: the root is mounted at
     # its real absolute path and nothing is provisioned.
     steam_mode: str = "isolated"
+    # Full parity: mount the host HOME at its real path (see
+    # config.SessionConfig.share_home). The profile normalization guarantees it
+    # only arrives together with steam_mode == "shared".
+    share_home: bool = False
     # Name moonlight lists and the backend announces; empty derives
     # ``{client}-{backend}`` (see advertised_name).
     stream_name: str = ""
@@ -433,6 +437,19 @@ def ensure_shared_steam_link(home_dir: Path, root: Path) -> Path:
                 "shared mode.")
         target.unlink(missing_ok=True)
         target.symlink_to(root)
+    verify_shared_launcher(root)
+    return link
+
+
+def verify_shared_launcher(root: Path) -> Path:
+    """Require an executable ``steam.sh`` in the host install, or refuse.
+
+    Both shared paths depend on it: the launcher link we create for a shared
+    sandbox, and full parity, where the real home brings its own. Without it
+    Steam extracts its own bootstrap tarball into ``~/.local/share/Steam`` —
+    the host install — so a missing launcher is a data-loss path, not a
+    nuisance.
+    """
     launcher = root / "steam.sh"
     if not os.access(launcher, os.X_OK):
         raise RuntimeError(
@@ -440,7 +457,12 @@ def ensure_shared_steam_link(home_dir: Path, root: Path) -> Path:
             "none. Without it Steam would extract its own bootstrap over that "
             "install, so podstage refuses to start. Install or repair the "
             "desktop Steam, or create the sandbox in isolated mode.")
-    return link
+    return launcher
+
+
+def host_home() -> Path:
+    """The desktop HOME a full-parity shared sandbox runs inside."""
+    return config.HOME.resolve()
 
 
 def lan_ips() -> list[str]:
@@ -522,6 +544,11 @@ def container_env(opts: RuntimeOptions, library_paths: list[Path],
     if backend.name == backends.SUNSHINE.name:
         env.update(_sunshine_only_env(opts, vendor))
     env.update(_forwarded_env(opts))
+    if opts.share_home:
+        # Full parity: the session's HOME is the desktop HOME, mounted at its
+        # real path. The entrypoint derives every path from $HOME, so nothing
+        # in the image has to move for this. Applied last: it overrides.
+        env["HOME"] = str(host_home())
     # Desktop mode is pointer-driven; flip the defaults unless pinned.
     # (sunshine-only: the moonshine entrypoint rejects mode=desktop.)
     if opts.mode == "desktop":
@@ -566,6 +593,9 @@ def podman_run_args(opts: RuntimeOptions, library_paths: list[Path] | None = Non
 
     steam_root = shared_steam_root() if opts.steam_mode == "shared" else None
     library_paths = outside_steam_root(library_paths, steam_root)
+    if opts.share_home:
+        # Everything inside the desktop home arrives with the home mount.
+        library_paths = outside_steam_root(library_paths, host_home())
 
     vendor = gpu_vendor()
     env = container_env(opts, library_paths, vendor=vendor)
@@ -583,8 +613,17 @@ def podman_run_args(opts: RuntimeOptions, library_paths: list[Path] | None = Non
                                              else None),
                             library_rw=opts.library_rw,
                             steam_root=steam_root,
+                            share_home=opts.share_home,
                             input_mirror=env.get("PS_GAMEPAD_RECONNECT") == "enabled")
     args += ["-v", f"{opts.home_dir}:/home/player"]
+    if opts.share_home:
+        # Full parity: the desktop HOME at its REAL path, so every absolute
+        # path inside a game's or emulator's configuration resolves exactly as
+        # it does on the desktop. Podstage's own state is shadowed out of it, so
+        # the host-side readers and the real home both keep working.
+        home = host_home()
+        args += ["-v", f"{home}:{home}"]
+        args += ["-v", f"{opts.home_dir}/.cache/podstage:{home}/.cache/podstage"]
     for key, val in env.items():
         args += ["-e", f"{key}={val}"]
     args += [opts.image_name]
@@ -681,7 +720,8 @@ def container_flags(library_paths: list[Path], home_dir: Path,
                     seccomp_profile: Path | None = None,
                     library_rw: bool = False,
                     input_mirror: bool = False,
-                    steam_root: Path | None = None) -> list[str]:
+                    steam_root: Path | None = None,
+                    share_home: bool = False) -> list[str]:
     """Devices, isolation and mounts of the rootless runtime container.
     Excludes: container name/detach, the client HOME volume, env, image.
 
@@ -766,7 +806,7 @@ def container_flags(library_paths: list[Path], home_dir: Path,
     # plain rw at its real absolute path: every library and shortcut path
     # inside Steam's own VDFs is host-absolute, and the container's Steam has
     # to find them exactly where the desktop wrote them.
-    if steam_root is not None:
+    if steam_root is not None and not share_home:
         args += ["-v", f"{steam_root}:{steam_root}"]
     # :ro breaks pending updates ("Disk write failure"). The default overlay
     # gives Steam a writable view while the host library stays untouched;
@@ -1244,12 +1284,24 @@ def start(opts: RuntimeOptions) -> RuntimeStatus:
     if opts.steam_mode == "shared":
         steam_root = shared_steam_root()
         opts.provision = False
-        ensure_shared_steam_link(opts.home_dir, steam_root)
+        if opts.share_home:
+            # Full parity: the real home brings the install and its own .steam,
+            # so there is no link to create — only the launcher to verify. The
+            # state shadow's host side has to exist before podman mounts it.
+            verify_shared_launcher(steam_root)
+            (opts.home_dir / ".cache" / "podstage").mkdir(parents=True, exist_ok=True)
+        else:
+            ensure_shared_steam_link(opts.home_dir, steam_root)
     # Provision here (the one place with the side effect), then hand the
     # discovered libraries to the pure args builder.
     library_paths = shared_library_paths(opts.home_dir, provision=opts.provision,
                                          app_ids=opts.app_ids)
     library_paths = outside_steam_root(library_paths, steam_root)
+    if opts.share_home:
+        # The home mount already covers everything inside it, the default
+        # library and compatibilitytools.d included; mounting any of it again
+        # would nest a bind inside the home mount.
+        library_paths = outside_steam_root(library_paths, host_home())
     # Extra mounts fail fast on a bad or vanished source: a missing bind
     # source would make podman create it, and a typo would surface only as a
     # broken non-Steam shortcut inside Big Picture.

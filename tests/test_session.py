@@ -81,6 +81,33 @@ def test_start_isolated_still_requires_a_login(monkeypatch):
         s.start()
 
 
+def test_host_steam_running_uses_ownership_in_full_parity(monkeypatch):
+    """A full-parity sandbox runs the desktop install, so the container's Steam
+    carries the desktop's own paths. Only the cgroup separates them there."""
+    from podstage.core import session as session_module
+
+    s = Session(SessionConfig(name="deck", steam_mode="shared", share_home=True))
+    desktop = "77 /home/tester/.local/share/Steam/ubuntu12_32/steam\n"
+    monkeypatch.setattr(session_module, "_pgrep_steam", lambda: desktop)
+
+    monkeypatch.setattr(session_module, "_owned_by_podman", lambda pid: True)
+    assert s._host_steam_running() is False
+
+    monkeypatch.setattr(session_module, "_owned_by_podman", lambda pid: False)
+    assert s._host_steam_running() is True
+
+
+def test_shared_sandbox_never_reports_its_own_steam(monkeypatch):
+    """A shared sandbox has no Steam of its own; the desktop install is the one
+    it runs, and the host check already covers it."""
+    from podstage.core import session as session_module
+
+    s = Session(SessionConfig(name="deck", steam_mode="shared"))
+    monkeypatch.setattr(session_module, "_pgrep_steam",
+                        lambda: "123 /usr/bin/steam")
+    assert s.sandbox_steam_running() is False
+
+
 def test_setup_refuses_in_shared_mode(monkeypatch):
     """Shared mode streams the desktop Steam: there is no separate install to
     launch, log into or repair, and the link repair would delete the very link

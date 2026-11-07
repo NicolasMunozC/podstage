@@ -450,6 +450,17 @@ TEXTS: dict[str, str] = {
         "Isoliert - eigenes Steam und eigener Login",
     "Shared - the Steam of this PC":
         "Geteilt - das Steam dieses PCs",
+    "Home directory": "Home-Verzeichnis",
+    "Share my home directory (configs, emulators, saves)":
+        "Mein Home-Verzeichnis teilen (Konfigurationen, Emulatoren, Spielst\u00e4nde)",
+    "Mounts this PC's home inside the session, so emulators, saves and "
+    "every path in a game's configuration are the desktop's own. The "
+    "session writes to it: a configuration broken there is broken on "
+    "the desktop.":
+        "Bindet das Home dieses PCs in die Session ein, sodass Emulatoren, "
+        "Spielst\u00e4nde und jeder Pfad in der Konfiguration eines Spiels die des "
+        "Desktops sind. Die Session schreibt darauf: eine dort kaputte "
+        "Konfiguration ist auf dem Desktop kaputt.",
     "Chosen when the sandbox is created and not editable: an isolated "
     "sandbox owns its Steam install, login and Proton prefixes. Create a new "
     "sandbox to change it.":
