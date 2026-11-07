@@ -189,10 +189,10 @@ class SessionPage(QWidget):
         self._client.currentTextChanged.connect(self._on_profile_selected)
         self._start_btn = QPushButton(tr("Start"))
         self._start_btn.setProperty("primary", True)
-        self._start_btn.clicked.connect(self._on_start)
+        self._start_btn.clicked.connect(self.start_session)
         self._stop_btn = QPushButton(tr("Stop"))
         self._stop_btn.setProperty("danger", True)
-        self._stop_btn.clicked.connect(self._on_stop)
+        self._stop_btn.clicked.connect(self.stop_session)
         self._pair_btn = QPushButton(tr("Pair …"))
         self._pair_btn.setToolTip(tr("Pair a new moonlight client by PIN "
                                      "(session must be running)"))
@@ -813,7 +813,15 @@ class SessionPage(QWidget):
                             if g and g.encoder_sessions is not None else None)
 
     # -- start / stop ----------------------------------------------------
-    def _on_start(self) -> None:
+    # Public: the tray menu drives the same path as these two buttons, so a
+    # start from the tray gets the same gates (bootstrapped, logged in, one
+    # Steam at a time, resolution prompt) instead of a parallel implementation.
+    @property
+    def pending(self) -> str | None:
+        """``"start"``/``"stop"`` while an action is in flight, else None."""
+        return self._pending
+
+    def start_session(self) -> None:
         sc = self._profile()
         if sc is None:
             return
@@ -861,7 +869,7 @@ class SessionPage(QWidget):
         self._detail.setText(tr("Starting container (provisioning + podman) …"))
         start_action(self._pool, _launch, f"Start {sc.name}", self._on_action_done)
 
-    def _on_stop(self) -> None:
+    def stop_session(self) -> None:
         sc = self._profile()
         if sc is None:
             return

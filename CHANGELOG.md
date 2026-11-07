@@ -6,11 +6,19 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No image rebuild needed for the poll or sandbox work below; the preview fix
+No image rebuild needed for the tray, poll or sandbox work below; the preview fix
 under *Fixed* does need `podstage runtime build`.
 
 ### Added
 
+- **podstage lives in the system tray.** Closing the window now parks the process
+  in the tray instead of ending the stream: the tray menu offers *Open window*,
+  *Start session* / *Stop session* and *Quit*. A left click on the icon shows or
+  hides the window, and the icon's tooltip says whether a session is streaming
+  and to which profile. Closing does not touch the container; *Quit* still asks
+  before stopping a running session, and on a host without a StatusNotifier
+  tray the close button keeps its old quit meaning so the window can never
+  become unreachable.
 - **Shared sandboxes: the stream runs your desktop Steam.** A profile created with
   `steam_mode = "shared"` mounts the host Steam install at its real path, so
   non-Steam shortcuts, grid art, per-game settings, Proton mappings and
