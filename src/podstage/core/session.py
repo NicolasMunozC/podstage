@@ -37,6 +37,21 @@ def _steam_shutdown(env: dict | None = None) -> None:
         pass
 
 
+def _owned_by_podman(pid: int) -> bool:
+    """True when podman started this process (its cgroup says so).
+
+    Paths stop telling the two Steams apart once a sandbox runs the desktop
+    install — that is the point of full parity — but a container process always
+    lives in a podman scope, and that still separates them.
+    """
+    try:
+        with open(f"/proc/{pid}/cgroup", encoding="utf-8", errors="replace") as fh:
+            cgroup = fh.read()
+    except OSError:
+        return False
+    return "podman" in cgroup or "libpod" in cgroup
+
+
 class Session:
     def __init__(self, cfg: config.SessionConfig,
                  app_config: config.AppConfig | None = None):
@@ -65,20 +80,41 @@ class Session:
         return self.cfg.steam_mode == "shared"
 
     def _host_steam_running(self) -> bool:
-        """True if a Steam is running under a HOME other than this session's.
+        """True if a Steam runs on the host that is not our own container.
 
-        The container's own Steam shows up in a host pgrep too, with
-        ``/home/player/...`` paths (the in-container HOME) — that one is
-        neither the desktop nor the sandbox Steam, so it never counts.
+        Two nets, because neither covers both modes. An isolated sandbox's
+        Steam carries the image HOME (``/home/player``), which no desktop
+        process ever has; a full-parity sandbox runs the desktop install with
+        the desktop's own paths, and there only the cgroup tells it apart from
+        the client the user opened themselves.
         """
-        out = _pgrep_steam()
-        return any(str(self.home) not in ln and "/home/player/" not in ln
-                   for ln in out.splitlines() if ln.strip())
+        for line in _pgrep_steam().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # The container's Steam under the image HOME, and the isolated
+            # sandbox's own visible Steam (its HOME is this profile's): neither
+            # is the desktop client.
+            if "/home/player/" in line or str(self.home) in line:
+                continue
+            try:
+                pid = int(line.split()[0])
+            except ValueError:
+                continue
+            if not _owned_by_podman(pid):
+                return True
+        return False
 
     def sandbox_steam_running(self) -> bool:
         """True if the sandbox Steam (the visible login/settings instance)
         is open on the desktop. Steam is single-instance per HOME, so the
-        container cannot start while it runs."""
+        container cannot start while it runs.
+
+        A shared sandbox has no Steam of its own: it runs the desktop install,
+        which :meth:`_host_steam_running` already covers.
+        """
+        if self.shared:
+            return False
         out = _pgrep_steam()
         return any(str(self.home) in ln for ln in out.splitlines() if ln.strip())
 

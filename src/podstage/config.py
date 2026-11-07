@@ -264,6 +264,15 @@ class SessionConfig:
     # owns state a switch would orphan, and a shared one has no install of its
     # own to fall back on.
     steam_mode: str = "isolated"
+    # Full parity for a shared sandbox: mount this PC's HOME at its real path so
+    # emulators, saves and every absolute path inside a game's configuration are
+    # the desktop's own, with nothing derived or guessed. Only meaningful when
+    # steam_mode is "shared"; creation-time only, like the mode itself.
+    #
+    # The session then writes to the real home: a configuration broken in the
+    # stream is broken on the desktop. That is the accepted price of real
+    # parity, and the reason this is opt-in rather than the default.
+    share_home: bool = False
     # Name moonlight lists and the backend announces (sunshine_name, i.e.
     # PS_SUNSHINE_NAME / PS_MOONSHINE_NAME). Empty derives
     # `{profile}-{backend}` via runtime.advertised_name, which keeps the
@@ -285,6 +294,11 @@ class SessionConfig:
         # sandbox's own install and login, so nothing of the host's is at risk.
         if self.steam_mode not in STEAM_MODES:
             self.steam_mode = "isolated"
+        # Parity means "run the desktop", which an isolated sandbox does not
+        # do: ignore the flag rather than leave a profile claiming something
+        # its mode cannot honour.
+        if self.steam_mode != "shared":
+            self.share_home = False
 
     def is_shared(self) -> bool:
         """True when this sandbox streams the host's own Steam install."""

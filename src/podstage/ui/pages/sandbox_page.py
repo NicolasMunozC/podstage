@@ -223,11 +223,33 @@ class ProfileDialog(QDialog):
                 "account."))
         form.addRow(tr("Steam install"), self._steam_mode)
 
+        # Full parity: the session runs inside this PC's home, so emulators,
+        # saves and every absolute path in a game's configuration are shared.
+        # Creation-time only, and only for a shared sandbox: it decides which
+        # filesystem the session owns.
+        self._share_home = QCheckBox(
+            tr("Share my home directory (configs, emulators, saves)"))
+        self._share_home.setToolTip(tr(
+            "Mounts this PC's home inside the session, so emulators, saves and "
+            "every path in a game's configuration are the desktop's own. The "
+            "session writes to it: a configuration broken there is broken on "
+            "the desktop."))
+        self._share_home.setChecked(existing.share_home if existing else False)
+        form.addRow(tr("Home directory"), self._share_home)
+        self._steam_mode.currentIndexChanged.connect(self._sync_share_home)
+        self._sync_share_home()
+
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
                                    | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
+
+    def _sync_share_home(self) -> None:
+        """Full parity needs a shared sandbox, and is creation-time only: the
+        choice decides which filesystem the session owns."""
+        shared = self._steam_mode.currentData() == "shared"
+        self._share_home.setEnabled(shared and self._existing is None)
 
     def _on_browse_mount(self) -> None:
         """Append a picked host directory to the extra-mount list.
@@ -430,6 +452,10 @@ class ProfileDialog(QDialog):
             # reconstructing with the default would silently reset an existing
             # sandbox's mode on every unrelated edit.
             steam_mode=self._steam_mode.currentData() or "isolated",
+            # The checkbox stays checkable only for a shared sandbox, but the
+            # rebuild is where the value has to land either way.
+            share_home=(self._share_home.isChecked()
+                        and self._steam_mode.currentData() == "shared"),
             moonshine_fec_percent=base.moonshine_fec_percent,
             moonshine_keyboard_layout=self._kb_layout.text().strip(),
             moonshine_keyboard_variant=self._kb_variant.text().strip(),
