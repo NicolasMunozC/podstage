@@ -21,16 +21,20 @@ def _english():
 
 # -- menu while stopped -----------------------------------------------------
 
-def test_stopped_menu_offers_one_start_entry_per_sandbox():
+def test_the_top_level_is_window_sessions_quit():
     entries = tray_model.menu(running=False, window_visible=True,
-                              sandboxes=("Steam Deck", "salón"))
-    assert [e.action for e in entries] == [
-        "open-window", "start-session", "quit"]
-    start = entries[1]
-    assert (start.label, start.enabled) == ("Start session", True)
-    assert [c.action for c in start.children] == ["start:Steam Deck", "start:salón"]
-    assert [c.label for c in start.children] == ["Steam Deck", "salón"]
-    assert all(c.enabled for c in start.children)
+                              sandboxes=("Steam Deck",))
+    assert [e.action for e in entries] == ["open-window", "sessions", "quit"]
+    assert [e.label for e in entries] == ["Open UI", "Sessions", "Quit"]
+
+
+def test_sessions_lists_one_start_row_per_sandbox():
+    sessions = tray_model.menu(running=False, window_visible=True,
+                               sandboxes=("Steam Deck", "salón"))[1]
+    assert sessions.enabled is True
+    assert [c.action for c in sessions.children] == ["start:Steam Deck", "start:salón"]
+    assert [c.label for c in sessions.children] == ["Steam Deck", "salón"]
+    assert all(c.enabled for c in sessions.children)
 
 
 def test_open_window_is_disabled_while_the_window_is_visible():
@@ -40,40 +44,40 @@ def test_open_window_is_disabled_while_the_window_is_visible():
     assert shown.enabled is False
 
 
-def test_the_start_entry_is_disabled_while_an_action_is_in_flight():
+def test_sessions_is_disabled_while_a_start_is_in_flight():
     starting = tray_model.menu(running=False, window_visible=True,
                                pending="start", sandboxes=("a",))[1]
-    assert (starting.label, starting.enabled) == ("starting …", False)
+    assert [(c.label, c.enabled) for c in starting.children] == [("starting …", False)]
     assert tray_model.menu(running=False, window_visible=True,
-                           sandboxes=("a",))[1].enabled is True
+                           sandboxes=("a",))[1].children[0].label == "a"
 
 
-def test_without_sandboxes_there_is_nothing_to_start():
-    start = tray_model.menu(running=False, window_visible=True)[1]
-    assert (start.label, start.enabled, start.children) == \
-        ("No sandboxes yet", False, ())
+def test_without_sandboxes_sessions_says_so():
+    sessions = tray_model.menu(running=False, window_visible=True)[1]
+    assert [(c.label, c.enabled) for c in sessions.children] == \
+        [("No sandboxes yet", False)]
 
 
 # -- menu while running -----------------------------------------------------
 
-def test_running_menu_shows_the_state_and_offers_stop():
+def test_running_sessions_shows_the_state_and_offers_stop():
     entries = tray_model.menu(running=True, window_visible=False,
                               client="Steam Deck", sandboxes=("Steam Deck",))
-    assert [e.action for e in entries] == [
-        "open-window", "session-status", "stop-session", "quit"]
-    status, stop = entries[1], entries[2]
+    assert [e.action for e in entries] == ["open-window", "sessions", "quit"]
+    status, stop = entries[1].children
     assert status.label == "Session (running) — Steam Deck"
     assert status.enabled is False  # an indicator, not a button
     assert (stop.label, stop.enabled) == ("Stop session", True)
 
 
 def test_running_without_a_known_client_still_says_running():
-    status = tray_model.menu(running=True, window_visible=True)[1]
+    status = tray_model.menu(running=True, window_visible=True)[1].children[0]
     assert status.label == "Session (running)"
 
 
 def test_stopping_is_disabled_while_it_stops():
-    stop = tray_model.menu(running=True, window_visible=True, pending="stop")[2]
+    stop = tray_model.menu(running=True, window_visible=True,
+                           pending="stop")[1].children[1]
     assert (stop.label, stop.enabled) == ("stopping …", False)
 
 
@@ -106,13 +110,13 @@ def test_the_keep_running_notice_fires_once():
 # -- starting from the tray -------------------------------------------------
 
 def test_a_tray_start_resolves_the_sandbox_from_the_action_id():
-    start = tray_model.menu(running=False, window_visible=True,
-                            sandboxes=("Steam Deck",))[1]
-    assert tray_model.sandbox_of(start.children[0].action) == "Steam Deck"
+    sessions = tray_model.menu(running=False, window_visible=True,
+                               sandboxes=("Steam Deck",))[1]
+    assert tray_model.sandbox_of(sessions.children[0].action) == "Steam Deck"
 
 
 def test_an_action_that_is_not_a_start_resolves_to_nothing():
-    for action in ("open-window", "quit", "start-session"):
+    for action in ("open-window", "quit", "sessions"):
         assert tray_model.sandbox_of(action) is None
 
 
