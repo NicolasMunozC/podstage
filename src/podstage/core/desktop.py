@@ -19,6 +19,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO_ROOT / "ui.sh"
 ICON_SRC = REPO_ROOT / "assets/podstage.svg"
+# Same pad with the details flipped from cream to near-black, for a light
+# panel. Only the Qt icon picks it (see icon_src); the .desktop entry draws
+# the one above, because a desktop file cannot react to its own background.
+ICON_LIGHT_SRC = REPO_ROOT / "assets/podstage-light.svg"
 
 AUTOSTART_FILE = Path.home() / ".config/autostart/podstage.desktop"
 MENU_DIR = Path.home() / ".local/share/applications"
@@ -26,6 +30,20 @@ MENU_FILE = MENU_DIR / "podstage.desktop"
 # hicolor scalable app icon → `Icon=podstage` resolves to it in any DE.
 ICON_DEST = Path.home() / ".local/share/icons/hicolor/scalable/apps/podstage.svg"
 
+
+
+def icon_src(*, light_background: bool | None = None) -> Path:
+    """The icon asset to draw on the current background.
+
+    ``light_background`` is the caller's knowledge of the theme: True when the
+    surface under the icon is light, False when it is dark, None when it is not
+    knowable (Qt reports ``ColorScheme.Unknown`` on a bare Wayland session). The
+    cream details vanish on a light panel, so a light surface wants the inverted
+    asset — but only when that asset is actually there.
+    """
+    if light_background and ICON_LIGHT_SRC.exists():
+        return ICON_LIGHT_SRC
+    return ICON_SRC
 
 def desktop_entry(*, autostart: bool) -> str:
     """A .desktop entry launching ui.sh. ``autostart`` adds the KDE
