@@ -11,6 +11,11 @@ under *Fixed* does need `podstage runtime build`.
 
 ### Added
 
+- **podstage is in the application menu, findable as `consola`.** `podstage
+  desktop menu on` installs an entry named *podstage (consola)* with a
+  `GenericName` and keywords, because most launchers match the entry's `Name`
+  only — the word "consola" has to live there to be found. It launches with
+  `Terminal=false`, so the GUI opens from the launcher with no shell.
 - **podstage lives in the system tray.** Closing the window now parks the process
   in the tray instead of ending the stream: the tray menu offers *Open window*,
   *Start session* / *Stop session* and *Quit*. A left click on the icon shows or
@@ -59,6 +64,12 @@ under *Fixed* does need `podstage runtime build`.
 
 ### Fixed
 
+- **The tray icon no longer turns into an info glyph when a session is
+  parked.** The one-time "podstage keeps running" notice used
+  `QSystemTrayIcon.showMessage`, and on a StatusNotifier host that flips the
+  item to `NeedsAttention` with Qt's 16 px attention icon, so the pad visibly
+  became a generic info icon until the timeout expired. It is a real desktop
+  notification now, and the tray item stays `Active`.
 - **The preview thumbnail no longer records video to keep one frame.** The
   sunshine preview loop captured two seconds of full-resolution video every
   interval and then threw all but one frame away, which cost about 62% of one CPU

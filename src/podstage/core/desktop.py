@@ -51,17 +51,22 @@ def desktop_entry(*, autostart: bool) -> str:
     lines = [
         "[Desktop Entry]",
         "Type=Application",
-        "Name=podstage",
+        # The launcher search most desktops ship matches the Name only, so the
+        # word the user reaches for has to live there: "consola" is the command
+        # it replaces. "podstage" stays in the same string so both find it.
+        "Name=podstage (consola)",
+        "GenericName=Game streaming console",
         "Comment=podstage Streaming-Server GUI",
         f"Exec={LAUNCHER}",
         "Icon=podstage",
         "Terminal=false",
+        "StartupWMClass=podstage",
     ]
     if autostart:
         lines.append("X-KDE-autostart-after=panel")
     else:
         lines.append("Categories=Game;Utility;")
-        lines.append("Keywords=stream;moonlight;sunshine;steam;")
+        lines.append("Keywords=consola;stream;moonlight;sunshine;steam;podstage;")
     return "\n".join(lines) + "\n"
 
 
