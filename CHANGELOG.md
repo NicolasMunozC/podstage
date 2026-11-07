@@ -6,8 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No image rebuild needed for the sandbox work below; the preview fix under
-*Fixed* does need `podstage runtime build`.
+No image rebuild needed for the poll or sandbox work below; the preview fix
+under *Fixed* does need `podstage runtime build`.
 
 ### Added
 
@@ -31,6 +31,10 @@ No image rebuild needed for the sandbox work below; the preview fix under
 
 ### Changed
 
+- **The telemetry poll follows what you can see.** A tray-only podstage with no
+  session polls every 10 s instead of every 2 s, a hidden window with a running
+  session every 5 s, and a visible window stays at 2 s. The idle GUI used to
+  burn ~3% of a core on telemetry nobody was looking at.
 - **The single-instance guard reads process ownership.** A shared sandbox carries
   the desktop's own paths, so the cgroup is what separates the container's Steam
   from the client you opened yourself. Both modes still block a second client.

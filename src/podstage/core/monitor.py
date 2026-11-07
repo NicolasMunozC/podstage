@@ -321,6 +321,24 @@ def game_perf(path: Path = PERF_FILE) -> GamePerf | None:
 
 # -- one-shot snapshot for the GUI -----------------------------------------
 
+# Poll cadences for the GUI, in milliseconds. A snapshot with a session running
+# blocks ~0.4 s sampling CPU/GPU, and one without still pays a ``podman
+# container inspect``; at 2 s the idle GUI burned ~3% of a core for telemetry
+# nobody could see. Interactive stays as it was; a hidden window backs off, and
+# a hidden idle window (a tray-icon-only process) backs off hardest. The cost is
+# detection latency only — a session started from the CLI shows up within one
+# interval instead of immediately.
+POLL_VISIBLE_MS = 2000
+POLL_HIDDEN_RUNNING_MS = 5000
+POLL_HIDDEN_IDLE_MS = 10000
+
+
+def poll_interval_ms(running: bool, window_visible: bool) -> int:
+    """How long the GUI waits between telemetry snapshots."""
+    if window_visible:
+        return POLL_VISIBLE_MS
+    return POLL_HIDDEN_RUNNING_MS if running else POLL_HIDDEN_IDLE_MS
+
 @dataclass
 class Snapshot:
     running: bool
