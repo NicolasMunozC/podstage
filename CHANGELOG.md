@@ -16,6 +16,13 @@ under *Fixed* does need `podstage runtime build`.
   `GenericName` and keywords, because most launchers match the entry's `Name`
   only — the word "consola" has to live there to be found. It launches with
   `Terminal=false`, so the GUI opens from the launcher with no shell.
+- **The tray starts the sandbox you pick, without opening the window.** `Start
+  session` is a submenu with one entry per sandbox, and while something streams
+  the menu shows `Session (running) — <sandbox>` plus `Stop session` instead of a
+  start list. Nothing opens the window: a start that needs an answer the tray
+  cannot give (a profile that asks for its resolution, or the desktop's sandbox
+  Steam being open) says so in a notification, and a failure surfaces the same
+  way rather than looking like a dead button.
 - **podstage lives in the system tray.** Closing the window now parks the process
   in the tray instead of ending the stream: the tray menu offers *Open window*,
   *Start session* / *Stop session* and *Quit*. A left click on the icon shows or
