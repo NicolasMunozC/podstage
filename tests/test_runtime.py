@@ -962,6 +962,22 @@ def test_share_home_off_keeps_the_separate_root_mount(monkeypatch):
     assert "-v /home/tester:/home/tester" not in joined
 
 
+def test_share_home_mounts_removable_media_roots(monkeypatch):
+    """A game on an external disk must launch without a per-folder entry: the
+    session sees the places removable media actually lands."""
+    monkeypatch.setattr(runtime, "gpu_vendor", lambda: "nvidia")
+    monkeypatch.setattr(runtime, "shared_steam_root", lambda: SHARED_ROOT)
+    monkeypatch.setattr(runtime, "host_home", lambda: Path("/home/tester"))
+    monkeypatch.setattr(runtime, "removable_media_roots",
+                        lambda: [Path("/run/media"), Path("/mnt")])
+
+    joined = " ".join(runtime.podman_run_args(
+        _opts(steam_mode="shared", share_home=True), library_paths=LIBS))
+
+    assert "-v /run/media:/run/media" in joined
+    assert "-v /mnt:/mnt" in joined
+
+
 def test_verify_shared_launcher_needs_an_executable(tmp_path: Path):
     root = tmp_path / "Steam"
     root.mkdir()

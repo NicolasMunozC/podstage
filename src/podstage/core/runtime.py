@@ -465,6 +465,17 @@ def host_home() -> Path:
     return config.HOME.resolve()
 
 
+def removable_media_roots() -> list[Path]:
+    """Host roots where removable media lands.
+
+    udisks mounts under ``/run/media`` (or ``/media``), and a hand-written
+    fstab entry usually goes to ``/mnt``. A game on an external disk should not
+    need a per-folder entry: these three cover the realistic ways a disk gets
+    mounted, whatever its label or UUID.
+    """
+    return [Path(p) for p in ("/run/media", "/media", "/mnt") if Path(p).is_dir()]
+
+
 def lan_ips() -> list[str]:
     """Global-scope IPv4 addresses of the host (for CSRF origins)."""
     rc, out = _run(["ip", "-4", "-o", "addr", "show", "scope", "global"])
@@ -624,6 +635,10 @@ def podman_run_args(opts: RuntimeOptions, library_paths: list[Path] | None = Non
         home = host_home()
         args += ["-v", f"{home}:{home}"]
         args += ["-v", f"{opts.home_dir}/.cache/podstage:{home}/.cache/podstage"]
+        # Removable media at the paths they are actually mounted on, so a game
+        # on an external disk launches without adding its folder to the profile.
+        for root in removable_media_roots():
+            args += ["-v", f"{root}:{root}"]
     for key, val in env.items():
         args += ["-e", f"{key}={val}"]
     args += [opts.image_name]

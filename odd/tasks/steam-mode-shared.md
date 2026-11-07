@@ -112,6 +112,10 @@ Consequences that are part of the spec, not surprises:
   podman-owned processes instead.
 - `share_home` is creation-time only, like `steam_mode`, and is ignored unless the
   sandbox is shared.
+- Removable media lands in `/run/media`, `/media` or `/mnt` depending on who
+  mounted it, and all three are mounted where they exist. A game on an external
+  disk therefore launches without a per-folder entry, and anything inside the home
+  needs nothing at all.
 
 ## Tasks
 
@@ -232,3 +236,12 @@ folders are not, because a game's save directory name is not its shortcut name a
 a wrong guess mounts the real `~/.config`. The user chose **full home parity**
 instead (S10), which makes both questions moot for anything inside the home and
 matches the actual goal: the same computer, run from the bed.
+- L8 (field result, user): a game added on the desktop appeared on the phone when
+the shared sandbox started — the feature's end-to-end goal met. It did not launch
+until the profile's `extra_mounts` got its folder, which prompted the question
+whether that step is avoidable. It is: the folder was `~/Descargas`, already
+covered by parity (same inode inside the container and on the host), so that entry
+was redundant — the failed attempt predated the parity sandbox. The removable
+media roots were then mounted as well, so an external disk no longer needs a
+per-folder entry either. Trade recorded: the session can now write to removable
+media too, exactly as the desktop can.
