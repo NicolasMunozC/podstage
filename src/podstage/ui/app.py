@@ -1,6 +1,7 @@
 """podstage server management window (PyQt6).
 
-A single main window — no tray — with sidebar navigation:
+One main window plus a system tray icon — closing the window parks the process
+in the tray so a running stream survives, and only the tray's Quit ends it:
 
   Session    start/stop, live telemetry, stream quality
   Sandboxen  client profiles + isolated Steam HOMEs (create/login/delete)
@@ -19,7 +20,7 @@ import sys
 
 try:
     from PyQt6.QtCore import QCoreApplication, QObject, pyqtSignal
-    from PyQt6.QtGui import QIcon
+    from PyQt6.QtGui import QAction, QIcon
     from PyQt6.QtWidgets import (
         QApplication,
         QFrame,
@@ -27,8 +28,10 @@ try:
         QLabel,
         QListWidget,
         QMainWindow,
+        QMenu,
         QMessageBox,
         QStackedWidget,
+        QSystemTrayIcon,
         QVBoxLayout,
         QWidget,
     )
@@ -40,7 +43,7 @@ except ImportError:
 from .. import __version__
 from ..config import AppConfig
 from ..core import monitor, runtime
-from . import theme
+from . import theme, tray_model
 from .i18n import tr
 from .pages.logs_page import LogsPage
 from .pages.sandbox_page import SandboxPage
@@ -80,13 +83,20 @@ class MainWindow(QMainWindow):
         self._poll: PollWorker | None = None
         self._pool: list = []          # keeps the quit-teardown worker alive
         self._quitting = False         # a quit sequence has started
-        self._teardown_done = False    # the container-stop worker finished
+        self._running = False          # last snapshot's session state
+        self._client: str | None = None
+        self._tray: QSystemTrayIcon | None = None
+        self._tray_menu: QMenu | None = None
+        self._tray_actions: dict[str, QAction] = {}
+        self._tray_available = False
+        self._tray_notified = False    # the keep-running notice was shown
 
         self._session_page = SessionPage(self._ctx)
         self._sandbox_page = SandboxPage(self._ctx)
         self._setup_page = SetupPage(self._ctx)
         self._logs_page = LogsPage(self._ctx)
         self._build()
+        self._build_tray()
 
         self._start_poll()
 
@@ -133,6 +143,85 @@ class MainWindow(QMainWindow):
     def _on_nav(self, row: int) -> None:
         self._stack.setCurrentIndex(row)
 
+    # -- tray ------------------------------------------------------------
+    def _build_tray(self) -> None:
+        """Own a StatusNotifierItem when the host has one.
+
+        Without a tray host the icon has nowhere to live, so ``_tray_available``
+        stays False and the close button keeps its old quit meaning
+        (``tray_model.close_action``).
+        """
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self._tray_available = True
+        self._tray = QSystemTrayIcon(_app_icon(), self)
+        self._tray_menu = QMenu(self)
+        for entry in tray_model.menu(running=False, window_visible=False):
+            action = QAction(entry.label, self._tray_menu)
+            action.setEnabled(entry.enabled)
+            action.triggered.connect(
+                lambda _checked=False, a=entry.action: self._on_tray_action(a))
+            self._tray_menu.addAction(action)
+            self._tray_actions[entry.action] = action
+        self._tray.setContextMenu(self._tray_menu)
+        self._tray.activated.connect(self._on_tray_activated)
+        self._tray.show()
+        self._refresh_tray()
+
+    def _refresh_tray(self) -> None:
+        """Re-render the menu + tooltip from the current state."""
+        if self._tray is None:
+            return
+        for entry in tray_model.menu(running=self._running,
+                                     window_visible=self.isVisible(),
+                                     pending=self._session_page.pending):
+            action = self._tray_actions[entry.action]
+            action.setText(entry.label)
+            action.setEnabled(entry.enabled)
+        self._tray.setToolTip(tray_model.tooltip(self._running, self._client))
+
+    def _on_tray_activated(self, reason:
+                           QSystemTrayIcon.ActivationReason) -> None:
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self._toggle_window()
+
+    def _on_tray_action(self, action: str) -> None:
+        if action == tray_model.OPEN_WINDOW:
+            self._show_window()
+        elif action == tray_model.QUIT:
+            self._begin_quit()
+        elif action == tray_model.TOGGLE_SESSION:
+            # Show the window first: start/stop can raise its own questions
+            # (bootstrap, one Steam at a time, resolution), and a modal dialog
+            # over a hidden window would be invisible.
+            self._show_window()
+            if self._running:
+                self._session_page.stop_session()
+            else:
+                self._session_page.start_session()
+            # The action just disabled itself; do not wait for the next snapshot
+            # to say so.
+            self._refresh_tray()
+
+    def _toggle_window(self) -> None:
+        if self.isVisible():
+            self.hide()
+        else:
+            self._show_window()
+
+    def _show_window(self) -> None:
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def _notify_hidden(self) -> None:
+        notice = tray_model.first_hide_notice(self._tray_notified)
+        if notice is None or self._tray is None:
+            return
+        self._tray_notified = True
+        self._tray.showMessage(notice[0], notice[1],
+                               QSystemTrayIcon.MessageIcon.Information, 6000)
+
     # -- polling ---------------------------------------------------------
     def _start_poll(self) -> None:
         self._poll = PollWorker()
@@ -142,6 +231,8 @@ class MainWindow(QMainWindow):
     def _on_snapshot(self, snap: monitor.Snapshot) -> None:
         self._session_page.on_snapshot(snap)
         self._sandbox_page.on_snapshot(snap)
+        self._running = snap.running
+        self._client = snap.client_profile
         if snap.running:
             owner = f" | {snap.client_profile}" if snap.client_profile else ""
             self._global_state.setText(tr("● running") + owner)
@@ -150,6 +241,14 @@ class MainWindow(QMainWindow):
             self._global_state.setText(tr("○ stopped"))
             self._global_state.setProperty("state", "stopped")
         theme.repolish(self._global_state)
+        self._apply_poll_cadence()
+        self._refresh_tray()
+
+    def _apply_poll_cadence(self) -> None:
+        """Match the poll cost to what the user can actually see."""
+        if self._poll is not None:
+            self._poll.set_interval(
+                monitor.poll_interval_ms(self._running, self.isVisible()))
 
     def mousePressEvent(self, event) -> None:
         """Clicking empty space drops the focus from whatever field holds it.
@@ -166,27 +265,51 @@ class MainWindow(QMainWindow):
 
     # -- lifecycle -------------------------------------------------------
     def closeEvent(self, event) -> None:
-        # A running session is stopped on a worker so the window stays
-        # responsive during ``podman stop``; the window closes once it finishes.
+        """Closing the window parks podstage in the tray instead of quitting.
+
+        The stream outlives the window; only the tray menu's Quit (or the close
+        button on a host without a tray) ends the process, and that path still
+        asks before stopping a running container.
+        """
+        event.ignore()
         if self._quitting:
-            if self._teardown_done:
-                super().closeEvent(event)
-            else:
-                event.ignore()  # teardown in progress; the worker finalizes
+            return  # the quit sequence owns the exit from here
+        if tray_model.close_action(self._tray_available) == "hide":
+            self.hide()
+            self._notify_hidden()
+            return
+        self._begin_quit()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._apply_poll_cadence()
+        self._refresh_tray()
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        self._apply_poll_cadence()
+        self._refresh_tray()
+
+    def _begin_quit(self) -> None:
+        """Stop a running session on a worker, then exit the process.
+
+        The container stop runs off the UI thread so a modal-free exit still
+        shows "stopping …" while ``podman stop`` works.
+        """
+        if self._quitting:
             return
         st = runtime.status()
         if st.running and not self._confirm_quit(st):
-            event.ignore()
             return
-        event.ignore()
         self._quitting = True
         if self._poll is not None:
             self._poll.stop()
             self._poll.wait(1500)
         self._logs_page.shutdown()
+        if self._tray is not None:
+            self._tray.hide()
         if not st.running:
-            self._teardown_done = True
-            self.close()
+            QApplication.quit()
             return
         self._global_state.setText(tr("stopping …"))
         start_action(self._pool, self._stop_container, "Stop",
@@ -211,8 +334,7 @@ class MainWindow(QMainWindow):
         return "stopped"
 
     def _on_teardown_done(self, _ok: bool, _msg: str) -> None:
-        self._teardown_done = True
-        self.close()
+        QApplication.quit()
 
 
 def _app_icon() -> QIcon:
@@ -233,6 +355,9 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("podstage")
     app.setDesktopFileName("podstage")  # Wayland maps the window to the .desktop icon
     app.setWindowIcon(_app_icon())
+    # Hiding the window must not end the process: the tray is the way back, and
+    # Quit (tray menu, or the close button on a tray-less host) is the only exit.
+    app.setQuitOnLastWindowClosed(False)
     win = MainWindow()
     win.show()
     return app.exec()

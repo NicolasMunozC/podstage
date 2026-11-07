@@ -12,6 +12,19 @@ TEXTS: dict[str, str] = {
     "○ stopped": "○ gestoppt",
     "● running": "● läuft",
     "Sandboxes": "Sandboxen",
+    # -- tray ------------------------------------------------------------
+    "Open window": "Fenster öffnen",
+    "Start session": "Session starten",
+    "Stop session": "Session stoppen",
+    "Quit": "Beenden",
+    "podstage — stopped": "podstage — gestoppt",
+    "podstage — streaming": "podstage — streamt",
+    "podstage — streaming to {client}": "podstage — streamt an {client}",
+    "podstage keeps running": "podstage läuft weiter",
+    "The window is in the tray. A running session keeps streaming — quit "
+    "from the tray menu to stop it.":
+        "Das Fenster liegt im Infobereich. Eine laufende Session streamt weiter "
+        "— zum Stoppen „Beenden“ im Infobereich wählen.",
     "Quit podstage?": "podstage beenden?",
     "A streaming session is running{owner}. Quitting stops the container and "
     "ends the stream.\n\nStop it and quit?":
