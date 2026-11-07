@@ -3,11 +3,12 @@
   "chosen": "02-bare-glyph.html",
   "handoffs": {
     "02-bare-glyph.html": {
-      "status": "sent",
+      "status": "implemented",
       "queued": false,
       "sentAt": "2026-11-07T18:59:14.549Z",
       "startedAt": null,
-      "implementedAt": null
+      "implementedAt": "2026-11-07T18:59:41.044Z",
+      "note": "Shipped as assets/podstage.svg (podstage blue body, cream details) in commit bcb49f0; cream-only body was invisible on light panels. Same file feeds window icon, .desktop entry, autostart and tray."
     }
   }
 }
