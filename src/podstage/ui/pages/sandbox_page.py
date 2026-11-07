@@ -590,8 +590,9 @@ class SandboxPage(QWidget):
                 resolution = tr("Pick at startup")
             else:
                 resolution = sc.resolution
-            login = tr("✓ logged in") if info.logged_in else (
-                tr("empty") if not info.exists else tr("✗ no login"))
+            login = tr("desktop Steam") if sc.is_shared() else (
+                tr("✓ logged in") if info.logged_in else (
+                    tr("empty") if not info.exists else tr("✗ no login")))
             paired = ", ".join(info.paired) if info.paired else "—"
             # Keyed, not positional: a column declared without a value raises
             # KeyError here instead of shifting every later cell one to the
@@ -625,6 +626,13 @@ class SandboxPage(QWidget):
         """'Start Steam login' until the selected sandbox is logged in; after
         that the same button opens the sandbox Steam for settings/Proton."""
         sc = self._selected()
+        if sc is not None and sc.is_shared():
+            # Nothing to log into: the sandbox streams the desktop Steam, and
+            # the button must not offer the isolated bootstrap.
+            self._login_btn.setText(tr("Uses desktop Steam"))
+            self._login_btn.setEnabled(False)
+            return
+        self._login_btn.setEnabled(True)
         logged_in = sc is not None and sandbox.steam_logged_in(sc.home_dir())
         self._login_btn.setText(tr("Open sandbox Steam") if logged_in
                                 else tr("Start Steam login"))
@@ -822,6 +830,18 @@ class SandboxPage(QWidget):
         sc = self._selected()
         if sc is None:
             self._status.setText(tr("No profile selected."))
+            return
+        if sc.is_shared():
+            # Shared mode streams the desktop Steam. Running a visible Steam
+            # with the sandbox HOME is precisely the isolated bootstrap: it
+            # would bootstrap 2 GB of a second client there and drop the very
+            # link shared mode resolves, leaving the sandbox asking for a
+            # login it does not need.
+            QMessageBox.information(
+                self, tr("Uses desktop Steam"),
+                tr("'{name}' runs the Steam of this PC (shared mode), so there "
+                   "is no separate login to start. Start the session on the "
+                   "Session page.", name=sc.name))
             return
         if self._steam_proc is not None:
             self._status.setText(tr("A Steam login is already running."))

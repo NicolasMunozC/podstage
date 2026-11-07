@@ -818,14 +818,18 @@ class SessionPage(QWidget):
         if sc is None:
             return
         session = Session(sc, app_config=self._ctx.config)
-        if not sandbox.is_bootstrapped(session.home):
-            self._last_error = tr("'{name}' is not set up. Start the Steam "
-                                  "login on the 'Sandboxes' page.", name=sc.name)
-            return
-        if not sandbox.steam_logged_in(session.home):
-            self._last_error = tr("'{name}' has no Steam login yet. Log in via "
-                                  "the 'Sandboxes' page first.", name=sc.name)
-            return
+        # A shared sandbox has no install or login of its own: it streams the
+        # desktop Steam, from the same files. Both gates below ask questions
+        # that only an isolated sandbox has an answer to.
+        if not session.shared:
+            if not sandbox.is_bootstrapped(session.home):
+                self._last_error = tr("'{name}' is not set up. Start the Steam "
+                                      "login on the 'Sandboxes' page.", name=sc.name)
+                return
+            if not sandbox.steam_logged_in(session.home):
+                self._last_error = tr("'{name}' has no Steam login yet. Log in via "
+                                      "the 'Sandboxes' page first.", name=sc.name)
+                return
         close_sandbox_steam = False
         if session.sandbox_steam_running():
             answer = QMessageBox.question(

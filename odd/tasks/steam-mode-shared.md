@@ -115,6 +115,11 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
   shared root intact; GUI field survives an edit. `S1-S8`. inline. commit 4.
 - T11 — Docs: README/CHANGELOG entry explaining both modes and the exclusivity
   rule. `S1,S2,S3`. inline. commit 4.
+- T12 — GUI gates must know the mode. The Sandboxes page has its own host-side
+  bootstrap (`sandbox_page.py:_on_bootstrap`, which launches `steam` with
+  `sandbox.steam_env` and calls `drop_foreign_steam_links`) and the Session page
+  has its own login gate (`session_page.py:_on_start`). Neither went through
+  `Session.setup()`, so both had to learn `steam_mode`. `S1,S5,S7`. inline.
 
 ## Log
 
@@ -139,3 +144,12 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
 - L4 (evidence, spike): recorded in S7. `/usr/bin/steam` execs
   `/usr/lib/steam/steam` → `/usr/lib/steam/bin_steam.sh`; version-comparison risk
   eliminated; host-root extraction risk identified and promoted to S7.
+- L5 (field failure, user): a sandbox created in shared mode asked for a Steam
+  login. Cause: the Sandboxes page ran its own host-side bootstrap, which
+  `drop_foreign_steam_links` used to delete `.steam/steam` (the shared link) and
+  then launched `steam` with `HOME=<sandbox>`, bootstrapping 2.5 GB of an isolated
+  client that asks to sign in. The Session page's own login gate sent the user
+  there first, because it checked `steam_logged_in` for a sandbox that has no
+  login of its own. Both GUI gates now skip the isolated questions in shared
+  mode; `runtime.ensure_shared_steam_link` repairs a link left pointing at the
+  sandbox's own client on the next start.

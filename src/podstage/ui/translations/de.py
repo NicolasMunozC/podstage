@@ -437,6 +437,14 @@ TEXTS: dict[str, str] = {
         "Bindet die geteilten Steam-Libraries read/write ein. Updates aus "
         "der Sandbox bleiben auf dem Host erhalten.",
     "Host library": "Host-Library",
+    "Uses desktop Steam": "Nutzt das Desktop-Steam",
+    "desktop Steam": "Desktop-Steam",
+    "'{name}' runs the Steam of this PC (shared mode), so there "
+    "is no separate login to start. Start the session on the "
+    "Session page.":
+        "'{name}' nutzt das Steam dieses PCs (geteilter Modus), es gibt also "
+        "keinen eigenen Login zu starten. Starte die Session auf der "
+        "Session-Seite.",
     "Steam install": "Steam-Installation",
     "Isolated - its own Steam and login":
         "Isoliert - eigenes Steam und eigener Login",
