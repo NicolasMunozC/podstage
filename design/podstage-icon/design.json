@@ -1,0 +1,27 @@
+{
+  "title": "podstage app icon: a controller",
+  "brief": "Replace podstage's stage-and-play icon with a console controller: PS4-like, Nintendo-like or generic. Same file feeds the window icon, the desktop entry and the tray.",
+  "artboards": [
+    {
+      "file": "01-gamepad-tile.html",
+      "title": "Generic gamepad on the app tile",
+      "tradeoff": "Keeps the tile identity the other podstage surfaces already use, and the silhouette survives its own shadows; the detail is what suffers at tray size.",
+      "width": 1200,
+      "height": 760
+    },
+    {
+      "file": "02-bare-glyph.html",
+      "title": "Bare glyph, console-pad shape",
+      "tradeoff": "The most legible at 22 px, which is what a tray icon actually gets; it gives up the tile, so it reads as a glyph rather than as an app.",
+      "width": 1200,
+      "height": 760
+    },
+    {
+      "file": "03-dualsense.html",
+      "title": "DualSense: both sticks low, light bar",
+      "tradeoff": "The most recognisably PlayStation; the sticks crowd the body, so 22 px turns them into two dark blobs.",
+      "width": 1200,
+      "height": 760
+    }
+  ]
+}

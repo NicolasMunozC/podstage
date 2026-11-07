@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "chosen": "02-bare-glyph.html",
+  "handoffs": {
+    "02-bare-glyph.html": {
+      "status": "sent",
+      "queued": false,
+      "sentAt": "2026-11-07T18:59:14.549Z",
+      "startedAt": null,
+      "implementedAt": null
+    }
+  }
+}
