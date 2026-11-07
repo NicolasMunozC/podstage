@@ -91,3 +91,28 @@ def test_a_light_asset_that_is_not_installed_falls_back(paths, monkeypatch):
 
 def test_the_dark_asset_ignores_a_light_background_claim(paths):
     assert desktop.icon_src(light_background=False) == desktop.ICON_SRC
+
+
+# -- launcher discoverability ----------------------------------------------
+# The launcher's plain search matches only the entry's Name, so the command the
+# user replaced ("consola") has to be in that string; keywords alone are not
+# enough unless the launcher is asked with its keyword prefix.
+
+def test_menu_entry_is_findable_as_consola():
+    text = desktop.desktop_entry(autostart=False)
+    assert "Name=podstage (consola)" in text
+    assert "GenericName=Game streaming console" in text
+    assert "Keywords=consola;" in text
+
+
+def test_the_entry_launches_without_a_terminal():
+    text = desktop.desktop_entry(autostart=False)
+    assert "Terminal=false" in text
+    assert f"Exec={desktop.LAUNCHER}" in text
+
+
+def test_autostart_keeps_its_own_shape():
+    text = desktop.desktop_entry(autostart=True)
+    assert "Name=podstage (consola)" in text
+    assert "Categories" not in text
+    assert "X-KDE-autostart-after=panel" in text

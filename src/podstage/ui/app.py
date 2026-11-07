@@ -15,6 +15,7 @@ go through pkexec — the GUI never needs a terminal.
 Run under the Qt-capable Python (brew's, with PyQt6) via ``ui.sh``.
 """
 
+import contextlib
 import os
 import sys
 
@@ -216,11 +217,10 @@ class MainWindow(QMainWindow):
 
     def _notify_hidden(self) -> None:
         notice = tray_model.first_hide_notice(self._tray_notified)
-        if notice is None or self._tray is None:
+        if notice is None:
             return
         self._tray_notified = True
-        self._tray.showMessage(notice[0], notice[1],
-                               QSystemTrayIcon.MessageIcon.Information, 6000)
+        _notify(notice[0], notice[1])
 
     # -- polling ---------------------------------------------------------
     def _start_poll(self) -> None:
@@ -356,6 +356,27 @@ def _light_background() -> bool | None:
     if scheme == known.Dark:
         return False
     return None
+
+
+def _notify(title: str, body: str) -> None:
+    """Pop a desktop notification, best-effort.
+
+    ``QSystemTrayIcon.showMessage`` is deliberately not used: on a
+    StatusNotifier host Qt flips the item to ``NeedsAttention`` and publishes its
+    own 16 px attention icon, so the podstage pad visibly turns into a generic
+    info glyph for the whole timeout (measured: NeedsAttention at t+0.4 s,
+    Active again at t+7 s). A real notification leaves the tray icon alone.
+    """
+    with contextlib.suppress(Exception):
+        from PyQt6.QtDBus import QDBusConnection, QDBusInterface
+
+        bus = QDBusConnection.sessionBus()
+        iface = QDBusInterface("org.freedesktop.Notifications",
+                               "/org/freedesktop/Notifications",
+                               "org.freedesktop.Notifications", bus)
+        if iface.isValid():
+            iface.call("Notify", "podstage", 0, "podstage", title, body, [],
+                       {}, 6000)
 
 
 def _app_icon() -> QIcon:
