@@ -4,6 +4,33 @@ All notable changes to podstage are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+No image rebuild needed, the runtime image is unchanged.
+
+### Added
+
+- **Shared sandboxes: the stream runs your desktop Steam.** A profile created with
+  `steam_mode = "shared"` mounts the host Steam install at its real path, so
+  non-Steam shortcuts, grid art, per-game settings, Proton mappings and
+  `compatdata` prefixes are the same files as on the desktop and the same saves
+  follow. Isolated stays the default, and every extra account still gets its own
+  profile.
+- **A shared sandbox runs inside the host HOME.** The home is mounted at its real
+  path with `HOME` set to it, so emulators, their `~/.config` and game folders in
+  the home need no configuration, and `/run/media`, `/media` and `/mnt` come along
+  for external disks. The session writes to the real home: that is the trade for
+  having nothing to configure.
+- **One shared sandbox, with a fixed shape.** Creating a second one is refused,
+  because there is one desktop, and the PC-wide settings are forced and locked:
+  home mounted, libraries writable, no games filter, no per-profile mounts.
+
+### Changed
+
+- **The single-instance guard reads process ownership.** A shared sandbox carries
+  the desktop's own paths, so the cgroup is what separates the container's Steam
+  from the client you opened yourself. Both modes still block a second client.
+
 ## [0.5.10] - 2026-11-04
 
 No image rebuild needed, the runtime image is unchanged.

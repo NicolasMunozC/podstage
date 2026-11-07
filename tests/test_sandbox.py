@@ -316,3 +316,31 @@ def test_drop_foreign_steam_links_keeps_a_sandbox_install(tmp_path: Path):
 
 def test_drop_foreign_steam_links_ignores_a_missing_steam_dir(tmp_path: Path):
     assert sandbox.drop_foreign_steam_links(tmp_path) == []
+
+
+def test_delete_refuses_anything_outside_the_sandbox_root(tmp_path, monkeypatch):
+    """The guard is what keeps a shared sandbox from ever deleting the real
+    Steam install or the real home: neither lives under the sandbox root."""
+    monkeypatch.setattr(config, "SESSIONS_HOME_ROOT", tmp_path / "homes")
+
+    with pytest.raises(ValueError, match="refusing to delete"):
+        sandbox.delete(tmp_path / "elsewhere")
+
+
+def test_delete_leaves_a_shared_steam_root_intact(tmp_path, monkeypatch):
+    """A shared sandbox reaches the desktop Steam through its own .steam/steam.
+    Deleting the sandbox removes the link, never what it points at."""
+    root = tmp_path / "homes"
+    monkeypatch.setattr(config, "SESSIONS_HOME_ROOT", root)
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    home = root / "shared"
+    (home / ".steam").mkdir(parents=True)
+    host_steam = tmp_path / "host-steam"
+    host_steam.mkdir()
+    (host_steam / "steam.sh").write_text("#!/bin/sh\n")
+    (home / ".steam" / "steam").symlink_to(host_steam)
+
+    sandbox.delete(home)
+
+    assert not home.exists()
+    assert (host_steam / "steam.sh").exists()
