@@ -7,8 +7,8 @@
       "queued": false,
       "sentAt": "2026-11-07T18:59:14.549Z",
       "startedAt": null,
-      "implementedAt": "2026-11-07T18:59:41.044Z",
-      "note": "Shipped as assets/podstage.svg (podstage blue body, cream details) in commit bcb49f0; cream-only body was invisible on light panels. Same file feeds window icon, .desktop entry, autostart and tray."
+      "implementedAt": "2026-11-07T19:04:38.341Z",
+      "note": "Already in the repo, no duplication: assets/podstage.svg (blue body #2b6cff, cream details #eef2fa) in bcb49f0, plus assets/podstage-light.svg (details #101319) chosen by desktop.icon_src() when Qt reports ColorScheme.Light in e5f75cb. Window icon, .desktop entry, autostart and tray all read ICON_SRC; 393 tests, ruff clean, pyright 0 errors. Only manual step left: `podstage desktop menu on` to refresh the installed hicolor copy."
     }
   }
 }
