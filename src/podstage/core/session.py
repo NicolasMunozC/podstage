@@ -243,6 +243,7 @@ class Session:
             extra_mounts=list(self.cfg.extra_mounts),
             library_rw=self.cfg.library_rw,
             steam_mode=self.cfg.steam_mode,
+            share_home=self.cfg.share_home,
             # A shared sandbox owns nothing to provision (see runtime.start,
             # which also refuses it for callers that build options directly).
             provision=not self.shared,

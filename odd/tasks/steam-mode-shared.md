@@ -176,6 +176,12 @@ this feature's slice counter starts at commit 1 below (not at `origin/main`).
   container env, shadow `<sandbox>/.cache/podstage` over `<HOME>/.cache/podstage`,
   skip the separate Steam-root mount and the `.steam` link, and verify the real
   launcher instead. `S7,S10`. inline. commit 05b51e6.
+  Amendment (bug found in the field): the field was threaded to
+  `RuntimeOptions`, the mount branch and the GUI, but **not** through
+  `Session._options()` — so the profile stored `share_home` and every real
+  session ran as plain shared mode. Unit tests that build `RuntimeOptions` by hand
+  proved a configuration that never runs. Fixed, with an end-to-end test from
+  profile → `_options()` → `podman_run_args`.
 - T16 — Single-instance guard: cgroup ownership added on top of the image-HOME and
   sandbox-HOME path exclusions, so a second session is still refused in both modes
   and the container's own Steam never counts as the desktop's. `S2,S10`. inline.
@@ -245,3 +251,12 @@ was redundant — the failed attempt predated the parity sandbox. The removable
 media roots were then mounted as well, so an external disk no longer needs a
 per-folder entry either. Trade recorded: the session can now write to removable
 media too, exactly as the desktop can.
+- L9 (field failure, user): with the folder removed from `extra_mounts` the game
+stopped launching again. The cause was podstage's, not the mount's: `share_home`
+reached `RuntimeOptions`, the mount branch and the GUI but never
+`Session._options()`, so every real session stored the flag and then ran as plain
+shared mode — the container only had the Steam root mounted, `~/Descargas` was
+absent inside it, and Proton's session died in four seconds. The earlier inode
+inspection had "proved" visibility because it built `RuntimeOptions` by hand with
+`share_home=True`, a configuration the product never produced. Lesson recorded in
+T15: an option is only wired when a test drives it from the profile.
