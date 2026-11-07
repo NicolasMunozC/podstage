@@ -114,3 +114,30 @@ L9 — Native assessment (read-only, `gentle_review assess`, baseRef main):
 risk medium, `reviewDue: false` (`under_budget`), plan = writer self-verification,
 no independent verifier, writer profile large (runtime). No native review was
 started because it is not due for this candidate.
+
+L10 — User, after trying it (verbatim): "en el widget estan los botones de start
+session open y quit, el de start session debe abrir como un submenu y que
+aparezcan las sanbox disponibles … al apretar en start esa sesion no se abre el
+GUI sino que deberia cambiar a SESSION (running), o algo asi … la idea de los
+botones del widget es que hagan la accion sin necesidad de abrir el GUI."
+
+S8 — Start is per sandbox and headless. `Start session` is a submenu with one
+entry per sandbox, in profile order. Choosing one starts *that* session and never
+shows the window. While it runs the menu replaces the list with
+`Session (running) — <sandbox>` (a disabled indicator) and `Stop session`.
+
+S9 — No dialog over a hidden window. The two questions the window asks are not
+asked from the tray: a profile that asks for its resolution, and the desktop's
+sandbox Steam being open, both come back as a notification naming the window as
+the place to answer. A start or stop that fails notifies its error, so a tray
+button never fails silently.
+
+L11 — Verification. `pytest` 405 passed (14 in `tests/test_tray_model.py`),
+`ruff` clean, `pyright` 0 errors. Driven with a throwaway `XDG_CONFIG_HOME`
+holding two sandboxes and `QSystemTrayIcon.isSystemTrayAvailable` forced true:
+the built menu is `Open window / Start session ▸ (Steam Deck, salón) / Quit`; a
+tray start of the "ask" profile raises no window and posts the resolution
+notice; a start of an unbootstrapped profile shows `starting …` immediately,
+keeps the window hidden, and replaces it with `Start session` plus a
+notification carrying the setup hint once the worker fails. The user's real
+config was not touched, so no second sandbox was created in it.

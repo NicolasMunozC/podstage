@@ -21,7 +21,7 @@ import sys
 
 try:
     from PyQt6.QtCore import QCoreApplication, QObject, Qt, pyqtSignal
-    from PyQt6.QtGui import QAction, QGuiApplication, QIcon
+    from PyQt6.QtGui import QGuiApplication, QIcon
     from PyQt6.QtWidgets import (
         QApplication,
         QFrame,
@@ -44,6 +44,7 @@ except ImportError:
 from .. import __version__
 from ..config import AppConfig
 from ..core import monitor, runtime
+from ..core.session import Session
 from . import theme, tray_model
 from .i18n import tr
 from .pages.logs_page import LogsPage
@@ -88,7 +89,7 @@ class MainWindow(QMainWindow):
         self._client: str | None = None
         self._tray: QSystemTrayIcon | None = None
         self._tray_menu: QMenu | None = None
-        self._tray_actions: dict[str, QAction] = {}
+        self._tray_action: str | None = None   # start/stop it fired
         self._tray_available = False
         self._tray_notified = False    # the keep-running notice was shown
 
@@ -157,29 +158,51 @@ class MainWindow(QMainWindow):
         self._tray_available = True
         self._tray = QSystemTrayIcon(_app_icon(), self)
         self._tray_menu = QMenu(self)
-        for entry in tray_model.menu(running=False, window_visible=False):
-            action = QAction(entry.label, self._tray_menu)
-            action.setEnabled(entry.enabled)
-            action.triggered.connect(
-                lambda _checked=False, a=entry.action: self._on_tray_action(a))
-            self._tray_menu.addAction(action)
-            self._tray_actions[entry.action] = action
         self._tray.setContextMenu(self._tray_menu)
         self._tray.activated.connect(self._on_tray_activated)
+        # Sandboxes are created and deleted in the window; the tray menu is
+        # rebuilt on that signal instead of waiting for the next poll.
+        self._ctx.config_changed.connect(self._refresh_tray)
         self._tray.show()
         self._refresh_tray()
 
+    def _tray_pending(self) -> str | None:
+        return self._tray_action or self._session_page.pending
+
     def _refresh_tray(self) -> None:
-        """Re-render the menu + tooltip from the current state."""
-        if self._tray is None:
+        """Rebuild the menu and tooltip from the current state.
+
+        Rebuilding (a handful of actions) rather than mutating keeps the start
+        submenu in sync with the sandbox list for free.
+        """
+        tray, menu = self._tray, self._tray_menu
+        if tray is None or menu is None:
             return
+        menu.clear()
+        sandboxes = tuple(s.name for s in self._ctx.config.sessions)
         for entry in tray_model.menu(running=self._running,
                                      window_visible=self.isVisible(),
-                                     pending=self._session_page.pending):
-            action = self._tray_actions[entry.action]
-            action.setText(entry.label)
-            action.setEnabled(entry.enabled)
-        self._tray.setToolTip(tray_model.tooltip(self._running, self._client))
+                                     pending=self._tray_pending(),
+                                     sandboxes=sandboxes,
+                                     client=self._client):
+            if entry.children:
+                submenu = menu.addMenu(entry.label)
+                if submenu is None:
+                    continue
+                submenu.setEnabled(entry.enabled)
+                for child in entry.children:
+                    self._add_tray_action(submenu, child)
+            else:
+                self._add_tray_action(menu, entry)
+        tray.setToolTip(tray_model.tooltip(self._running, self._client))
+
+    def _add_tray_action(self, menu: QMenu, entry: tray_model.Entry) -> None:
+        action = menu.addAction(entry.label)
+        if action is None:
+            return
+        action.setEnabled(entry.enabled)
+        action.triggered.connect(
+            lambda _checked=False, a=entry.action: self._on_tray_action(a))
 
     def _on_tray_activated(self, reason:
                            QSystemTrayIcon.ActivationReason) -> None:
@@ -187,22 +210,54 @@ class MainWindow(QMainWindow):
             self._toggle_window()
 
     def _on_tray_action(self, action: str) -> None:
-        if action == tray_model.OPEN_WINDOW:
+        sandbox = tray_model.sandbox_of(action)
+        if sandbox is not None:
+            self._start_from_tray(sandbox)
+        elif action == tray_model.OPEN_WINDOW:
             self._show_window()
         elif action == tray_model.QUIT:
             self._begin_quit()
-        elif action == tray_model.TOGGLE_SESSION:
-            # Show the window first: start/stop can raise its own questions
-            # (bootstrap, one Steam at a time, resolution), and a modal dialog
-            # over a hidden window would be invisible.
-            self._show_window()
-            if self._running:
-                self._session_page.stop_session()
-            else:
-                self._session_page.start_session()
-            # The action just disabled itself; do not wait for the next snapshot
-            # to say so.
-            self._refresh_tray()
+        elif action == tray_model.STOP_SESSION:
+            self._stop_from_tray()
+
+    # -- start / stop without the window ---------------------------------
+    # The tray's whole point is acting without opening the window, so these
+    # paths never show it and never raise a modal dialog (a dialog over a hidden
+    # window is invisible). Anything that needs an answer comes back as a
+    # notification with the window as the place to answer it.
+
+    def _start_from_tray(self, name: str) -> None:
+        sc = self._ctx.config.get(name)
+        if sc is None:
+            return
+        session = Session(sc, app_config=self._ctx.config)
+        refusal = tray_model.headless_refusal(
+            asks_resolution=sc.is_ask(),
+            sandbox_steam_running=session.sandbox_steam_running())
+        if refusal is not None:
+            _notify(tr("podstage"), refusal)
+            return
+        self._tray_action = "start"
+        self._refresh_tray()
+        start_action(self._pool, session.start, f"Start {name}",
+                     self._on_tray_action_done)
+
+    def _stop_from_tray(self) -> None:
+        sc = self._ctx.config.get(self._client or "")
+        if sc is None:
+            return
+        session = Session(sc, app_config=self._ctx.config)
+        self._tray_action = "stop"
+        self._refresh_tray()
+        start_action(self._pool, session.stop, f"Stop {sc.name}",
+                     self._on_tray_action_done)
+
+    def _on_tray_action_done(self, ok: bool, msg: str) -> None:
+        self._tray_action = None
+        if not ok:
+            # Silent failure would look like a dead button.
+            _notify(tr("podstage"), msg)
+        self._refresh_tray()
 
     def _toggle_window(self) -> None:
         if self.isVisible():

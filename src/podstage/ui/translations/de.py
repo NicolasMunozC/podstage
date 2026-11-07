@@ -21,6 +21,15 @@ TEXTS: dict[str, str] = {
     "podstage — streaming": "podstage — streamt",
     "podstage — streaming to {client}": "podstage — streamt an {client}",
     "podstage keeps running": "podstage läuft weiter",
+    "Session (running)": "Session (läuft)",
+    "Session (running) — {client}": "Session (läuft) — {client}",
+    "No sandboxes yet": "Noch keine Sandboxen",
+    "This sandbox asks for a resolution at startup. Pick it in the window.":
+        "Diese Sandbox fragt beim Start nach der Auflösung. Wähle sie im Fenster.",
+    "The sandbox Steam is open on the desktop. Close it there, then start "
+    "from here.":
+        "Das Sandbox-Steam läuft auf dem Desktop. Schließe es dort und starte "
+        "dann von hier.",
     "The window is in the tray. A running session keeps streaming — quit "
     "from the tray menu to stop it.":
         "Das Fenster liegt im Infobereich. Eine laufende Session streamt weiter "

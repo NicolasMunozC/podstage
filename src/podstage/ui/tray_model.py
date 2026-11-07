@@ -2,10 +2,10 @@
 
 ``QSystemTrayIcon`` and ``QMenu`` cannot be exercised under pytest (they need a
 running ``QApplication`` and a StatusNotifier host), so every choice the tray
-makes — the menu shape, the labels, the tooltip, what closing the window means,
-when the one-time notice fires — is a pure function here and gets pinned by
-``tests/test_tray_model.py``. ``ui.app`` only renders these results into Qt
-objects.
+makes — the menu shape, the set of sandboxes offered, the labels, the tooltip,
+what closing the window means, when the one-time notice fires — is a pure
+function here and gets pinned by ``tests/test_tray_model.py``. ``ui.app`` only
+renders these results into Qt objects.
 """
 
 from dataclasses import dataclass
@@ -13,43 +13,91 @@ from dataclasses import dataclass
 from .i18n import tr
 
 OPEN_WINDOW = "open-window"
-TOGGLE_SESSION = "toggle-session"
+START_MENU = "start-session"
+START_PREFIX = "start:"
+STOP_SESSION = "stop-session"
+SESSION_STATUS = "session-status"
 QUIT = "quit"
 
 
 @dataclass(frozen=True)
 class Entry:
-    """One tray menu row: the action id the window switches on, and its label."""
+    """One tray menu row.
+
+    ``children`` turns the row into a submenu; the parent's ``action`` is then
+    only an id (the window never dispatches it), and ``enabled`` decides whether
+    the submenu opens at all.
+    """
 
     action: str
     label: str
     enabled: bool = True
+    children: tuple["Entry", ...] = ()
 
 
-def menu(running: bool, window_visible: bool,
-         pending: str | None = None) -> tuple[Entry, ...]:
+def menu(running: bool, window_visible: bool, pending: str | None = None,
+         sandboxes: tuple[str, ...] = (), client: str | None = None,
+         ) -> tuple[Entry, ...]:
     """The tray menu for the current state, in display order.
 
-    ``Open window`` is disabled while the window is already visible; the single
-    session entry is what start and stop share, so the menu never grows a
-    second button that could contradict the first. ``pending`` mirrors the
-    session page's in-flight action (``"start"``/``"stop"``): its buttons are
-    disabled during it, and the tray must not offer a second start underneath.
+    A session's own controls replace each other rather than coexisting: while
+    something streams the menu shows the state and offers ``Stop session``, and
+    while nothing does it offers ``Start session`` with one entry per sandbox.
+    ``pending`` mirrors the in-flight action (``"start"``/``"stop"``) so the
+    entry that fired cannot be fired again underneath itself.
     """
-    return (
-        Entry(OPEN_WINDOW, tr("Open window"), not window_visible),
-        _session_entry(running, pending),
-        Entry(QUIT, tr("Quit")),
-    )
+    entries = [Entry(OPEN_WINDOW, tr("Open window"), not window_visible)]
+    if running:
+        entries.append(Entry(SESSION_STATUS, _status_label(client), False))
+        entries.append(Entry(
+            STOP_SESSION,
+            tr("stopping …") if pending == "stop" else tr("Stop session"),
+            pending is None))
+    else:
+        entries.append(_start_entry(pending, sandboxes))
+    entries.append(Entry(QUIT, tr("Quit")))
+    return tuple(entries)
 
 
-def _session_entry(running: bool, pending: str | None) -> Entry:
+def _status_label(client: str | None) -> str:
+    if client:
+        return tr("Session (running) — {client}", client=client)
+    return tr("Session (running)")
+
+
+def _start_entry(pending: str | None, sandboxes: tuple[str, ...]) -> Entry:
     if pending == "start":
-        return Entry(TOGGLE_SESSION, tr("starting …"), False)
-    if pending == "stop":
-        return Entry(TOGGLE_SESSION, tr("stopping …"), False)
-    return Entry(TOGGLE_SESSION,
-                 tr("Stop session") if running else tr("Start session"))
+        return Entry(START_MENU, tr("starting …"), False)
+    if not sandboxes:
+        return Entry(START_MENU, tr("No sandboxes yet"), False)
+    return Entry(START_MENU, tr("Start session"), True,
+                 tuple(Entry(f"{START_PREFIX}{name}", name) for name in sandboxes))
+
+
+def sandbox_of(action: str) -> str | None:
+    """The sandbox name a ``start:<name>`` menu action carries, else None."""
+    if action.startswith(START_PREFIX):
+        return action[len(START_PREFIX):]
+    return None
+
+
+def headless_refusal(*, asks_resolution: bool, sandbox_steam_running: bool,
+                     ) -> str | None:
+    """Why a start from the tray has to be refused, or None when it may run.
+
+    The tray starts sessions without opening the window, so it cannot ask the
+    two questions the session page asks (which resolution, and whether the
+    desktop's sandbox Steam may be closed). Rather than open a modal dialog over
+    a hidden window, these cases explain themselves in a notification and leave
+    the window as the place to answer them.
+    """
+    if asks_resolution:
+        return tr("This sandbox asks for a resolution at startup. Pick it in "
+                  "the window.")
+    if sandbox_steam_running:
+        return tr("The sandbox Steam is open on the desktop. Close it there, "
+                  "then start from here.")
+    return None
 
 
 def tooltip(running: bool, client: str | None = None) -> str:
