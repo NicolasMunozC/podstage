@@ -116,6 +116,11 @@ _COMMON_ENV: dict[str, str | None] = {
     "PS_GUIDE_HOLD_MS": None,
     # Experimental feature (config.EXPERIMENTAL_FEATURES), "enabled".
     "PS_HDR": None,
+    # Display reserve (both entrypoints default to enabled, 4 = :0-:3). Holds
+    # the low X display numbers so the session's Xwayland cannot take one the
+    # host uses; see containers/runtime/display-reserve.c. Forwarded only to
+    # opt out or to widen the range.
+    "PS_DISPLAY_RESERVE": None,
 }
 
 # sunshine-backend only: labwc, the seat-shim and sunshine itself. PS_MOUSE_INPUT

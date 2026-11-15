@@ -364,6 +364,42 @@ if [ "${PS_PERF_METRICS:-}" = enabled ]; then
     ) &
 fi
 
+# --- display reserve -------------------------------------------------------
+# moonshine launches gamescope, which brings up its own Xwayland, and --network
+# host shares the host's abstract socket namespace where Xwayland registers
+# @/tmp/.X11-unix/X<n>. Without this the session takes :0 and host X clients
+# with DISPLAY=:0 are answered here and streamed instead of reaching the host's
+# own X server. Same helper as the runtime image (this image derives from it);
+# see display-reserve.c. A display the host already holds is skipped, never
+# stolen. Started before the mode dispatch, so healthcheck's Xwayland probe is
+# covered too.
+#
+# PS_DISPLAY_RESERVE is the count (:0-:3 by default) or "disabled". Validated
+# here: the helper rejects a bad count with exit 2 and the restart loop below
+# would then spin forever.
+if [ "${PS_DISPLAY_RESERVE:-4}" != disabled ]; then
+    ps_reserve=${PS_DISPLAY_RESERVE:-4}
+    case "$ps_reserve" in
+        ''|*[!0-9]*)
+            log "(warning) PS_DISPLAY_RESERVE='$ps_reserve' is not a count, reserving :0-:3"
+            ps_reserve=4
+            ;;
+        *)
+            if [ "$ps_reserve" -gt 64 ]; then
+                log "(warning) PS_DISPLAY_RESERVE=$ps_reserve exceeds 64, capping"
+                ps_reserve=64
+            fi
+            ;;
+    esac
+    # Supervised like the runtime entrypoint's: the reservation only holds
+    # while the helper lives, so a silent death would leave the session exposed.
+    (while true; do
+        podstage-display-reserve "$ps_reserve"
+        log "(warning) display-reserve exited, restarting"
+        sleep 1
+    done) &
+fi
+
 # --- run --------------------------------------------------------------------
 case "$PS_MODE" in
   healthcheck)

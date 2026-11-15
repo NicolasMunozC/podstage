@@ -173,6 +173,47 @@ start_pipewire() {
     done
 }
 
+# --- display reserve -------------------------------------------------------
+# Xwayland registers @/tmp/.X11-unix/X<n> in the abstract socket namespace,
+# which --network host shares with the host (only /tmp is private to the
+# container). Without this, the session's Xwayland takes :0 and every host X
+# client with DISPLAY=:0 — an Electron app, a browser — is answered here,
+# composited by labwc/gamescope and streamed, so it appears over the game and
+# on the TV the stream goes to. Holding the low numbers non-listening moves the
+# session's X servers up and refuses those clients, which then fall back to the
+# host's filesystem socket. See display-reserve.c. A display the host already
+# holds is skipped, never stolen. Started before the diagnostics-only modes, so
+# no container start can leave an X server on a host display number.
+#
+# PS_DISPLAY_RESERVE is the count (:0-:3 by default) or "disabled". Validated
+# here: the helper rejects a bad count with exit 2 and the restart loop below
+# would then spin forever.
+if [ "${PS_DISPLAY_RESERVE:-4}" != disabled ]; then
+    ps_reserve=${PS_DISPLAY_RESERVE:-4}
+    case "$ps_reserve" in
+        ''|*[!0-9]*)
+            log "(warning) PS_DISPLAY_RESERVE='$ps_reserve' is not a count, reserving :0-:3"
+            ps_reserve=4
+            ;;
+        *)
+            if [ "$ps_reserve" -gt 64 ]; then
+                log "(warning) PS_DISPLAY_RESERVE=$ps_reserve exceeds 64, capping"
+                ps_reserve=64
+            fi
+            ;;
+    esac
+    (while true; do
+        # No pipe in between: the helper prefixes its own lines, and a pipe
+        # would block-buffer them until the process exits, which is exactly
+        # when they matter.
+        podstage-display-reserve "$ps_reserve"
+        # A restart cannot reclaim a display an X server took during the gap;
+        # say so rather than looking healthy.
+        log "(warning) display-reserve exited, restarting"
+        sleep 1
+    done) &
+fi
+
 # --- diagnostics-only modes ------------------------------------------------
 case "$PS_MODE" in
   shell) exec bash ;;

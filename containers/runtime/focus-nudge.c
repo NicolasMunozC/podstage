@@ -156,12 +156,14 @@ static int display_socket_exists(int n)
 }
 
 // gamescope's WM runs on the Xwayland display whose root carries its atoms; as
-// a sibling process we have no DISPLAY, so probe the sockets it created.
+// a sibling process we have no DISPLAY, so probe the sockets it created. The
+// upper bound covers the displays podstage-display-reserve can push the
+// session up to (64 is the helper's ceiling), not just the traditional :0-:9.
 static Display *open_gamescope_display(Atom *out_atom, Window *out_root,
                                        int wait_s)
 {
     for (int elapsed = 0;; elapsed++) {
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 64; i++) {
             char name[8];
             if (!display_socket_exists(i))
                 continue;

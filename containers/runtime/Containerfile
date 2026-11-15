@@ -108,6 +108,17 @@ RUN pacman -S --noconfirm --needed gcc && \
     rm /tmp/seat-shim.c /tmp/keeper.c && \
     pacman -Rns --noconfirm gcc && pacman -Scc --noconfirm
 
+# Display reserve: keeps the session's X servers off the host's display
+# numbers. --network host shares the host's abstract socket namespace, where
+# Xwayland registers @/tmp/.X11-unix/X<n>; see display-reserve.c for the whole
+# diagnosis. Small and dependency-free, so it builds in its own layer.
+COPY display-reserve.c /tmp/
+RUN pacman -S --noconfirm --needed gcc && \
+    gcc -O2 -Wall -Wextra -Werror -o /usr/local/bin/podstage-display-reserve \
+        /tmp/display-reserve.c && \
+    rm /tmp/display-reserve.c && \
+    pacman -Rns --noconfirm gcc && pacman -Scc --noconfirm
+
 # Two small helpers that talk to the running gamescope, built in one layer:
 #
 #  * perf probe — a wayland client that asks gamescope for the presented

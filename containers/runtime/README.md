@@ -105,8 +105,11 @@ The container is rootless (`--userns=keep-id`): no sudo, no extra capabilities.
   and podman's default `/dev/shm` is 64 MB, which crash-loops it into a black
   or flashing Big Picture.
 - `--security-opt label=disable`: host SELinux is enforcing.
-- `--network host`: moonlight ports. (Collides with host X on the abstract
-  `@/tmp/.X11-unix/X0`. gamescope harmlessly falls back to Xwayland `:2`.)
+- `--network host`: moonlight ports. It also shares the host's abstract AF_UNIX
+  namespace, where Xwayland registers `@/tmp/.X11-unix/X<n>`; without the
+  reservation below, the session's Xwayland takes `:0` and every host X client
+  with `DISPLAY=:0` is composited by the session and streamed (see
+  *Display isolation*).
 - Shared host Steam libraries (steamapps + `compatibilitytools.d`) are
   **overlay volumes** (`:O,upperdir=…,workdir=…`) at their host paths: the
   host library is a read-only lowerdir, and writes go to per-sandbox upper dirs
@@ -115,6 +118,26 @@ The container is rootless (`--userns=keep-id`): no sudo, no extra capabilities.
   Uppers persist across streams, are purged per app once the host overtakes
   it, and are deleted with the sandbox. Prefixes, saves and shader caches
   still live in the sandbox HOME.
+
+## Display isolation
+
+The session must be the only thing on its screen: nothing the host opens may
+land in the stream. `--network host` shares the host's abstract AF_UNIX
+namespace, and Xwayland registers `@/tmp/.X11-unix/X<n>` there — the filesystem
+sockets stay apart because the container's `/tmp` is private, but Xlib tries
+the abstract transport first. Untouched, the session's Xwayland takes `:0` and
+a host client with `DISPLAY=:0` (an Electron app, a browser) is composited by
+labwc/gamescope and encoded to the client instead of appearing on the host's
+own screen.
+
+`podstage-display-reserve` (`display-reserve.c`) closes that: before the
+compositor starts it binds `:0`-`:3` without listening, so the session's X
+servers move up to a number the host does not use, and a host client aimed at
+`:0` is refused here and falls back to the host's own filesystem socket. A
+display another X server already holds is skipped, never stolen.
+`PS_DISPLAY_RESERVE=<n>` widens the reserved range (default 4) and
+`PS_DISPLAY_RESERVE=disabled` turns it off. The moonshine image derives from
+this one and reserves the same way.
 
 ## Status
 
